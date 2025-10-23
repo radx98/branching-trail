@@ -13,7 +13,7 @@ If user chooses "specify", its the same but there's no option name, just this ne
 # Visual
 All blocks on the canvas have the same style. Soft, modern, rounded. Arrows are curved, start on the right of a block, end on the left of another block. Blocks rely on React Flow's default positioning and collision handling. They can be drag'n'dropped.
 
-Sidebar is fully transparent, only the elements on it are visible. Tree/session names look like they're the same blocks as all the others but stay fixed in the sidebar. When new session is sceated new sidebar item with a placeholder title "New session" is added and canvas is opened. There's only one block on the canvas - initial prompt input. After submitting the initial prompt, session name is generated and added to the sidebar. Input field on the initial prompt block becomes a text and first set of options is generated.
+Sidebar is fully transparent, only the elements on it are visible. Session names sit in their own sidebar cards. When the user clicks "new" a placeholder titled "New session" appears and the canvas shows an initial prompt input. After submitting the initial prompt, a generated session name replaces the placeholder and the first set of options appears on the canvas. 
 
 Option names are titles same as session/tree name in the first block. Prompts added by user including initial prompt is plain text. Input field with a submit button is created under the title of a block and removed after submission replaced with the prompt text.
 
