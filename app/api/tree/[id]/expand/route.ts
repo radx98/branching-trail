@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { ApiError, requireAuthenticatedClient } from "@/lib/server/auth";
@@ -22,15 +22,12 @@ import {
   walkTree,
 } from "@/lib/tree/operations";
 
-type RouteContext = {
-  params: {
-    id: string;
-  };
-};
-
-export async function POST(request: Request, context: RouteContext) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
-    const sessionId = context.params.id;
+    const { id: sessionId } = await params;
     const payload = expandNodeBodySchema.parse(await request.json());
     const { supabase, user } = await requireAuthenticatedClient();
 
