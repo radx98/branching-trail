@@ -92,6 +92,17 @@ The whole tree is described by a JSON and is updated as soon as the JSON is upda
 }
 ```
 "Specify" button exists in UI only until used. If user does so, a new child is added to the same parent the button comes from. The block is updated then to become a new option with a newly added prompt but without a name/title. New "specify" button is added automatically by the UI because (no addidional functions or rules, it's created always in addition to the existing options/children).
+Once converted, the specify node keeps an empty title, surfaces the user prompt as its body text, and behaves like any other option that can branch further.
+
+# Canvas Primitives
+React Flow nodes expose a consistent structure that feeds both the canvas and sidebar components:
+- `id`: unique identifier.
+- `title`: immutable option or session label rendered in the block header.
+- `prompt`: editable user-authored text displayed beneath the title.
+- `variant`: `"prompt" | "option" | "specify"` to switch visual treatments and available actions.
+- `status`: `"idle" | "loading" | "error"` for future badges or subtle state indicators.
+
+Sidebar entries reuse the same data (id, title, status) so the Zustand store can keep both views synchronized.
 
 # Implementation Plan
 
@@ -104,13 +115,16 @@ The whole tree is described by a JSON and is updated as soon as the JSON is upda
 - Implement session list sidebar with create-new flow, placeholder naming, and in-memory session switching.
 - Build the React Flow canvas with node/edge types for prompts, options, and specify buttons using default layout behavior.
 - Add drag/drop, loading placeholders, and prompt editing UI on nodes; ensure descendant pruning visuals and state synchronization with sidebar.
+- Define a shared TypeScript node model (`id`, `title`, `prompt`, `variant`, `status`) and matching Zustand slice consumed by both the canvas and sidebar so the views stay in sync without adapters.
+- Ship Phase 2 with a deterministic mock tree generator and clearly tagged placeholder dataset that can be removed once the real expand/create API calls land in Phase 3.
+- Wrap the prompt editor and node-action controls in reusable components so both the canvas nodes and sidebar entries share pruning and editing behaviour.
 
 ## Phase 3 — API & Persistence
 - Create Supabase tables and SQL helpers for session CRUD; wire state store to persist `tree_json` snapshots.
 - Implement Next.js API routes for session creation and node expansion, including payload validation with Zod.
-- Integrate OpenAI calls with streamed responses forwarded to the client while persisting updates incrementally in Supabase.
+- Integrate OpenAI calls with streamed responses forwarded to the client while persisting debounced partial updates in Supabase so the tree stays near real time.
 
 ## Phase 4 — Polish & Hardening
-- Refine error handling: rollback UI state on failures, surface retry controls, and gate inputs while requests are in flight.
+- Refine error handling: rollback UI state on failures, surface retry controls, and gate inputs while requests are in flight. Unauthenticated local usage is fine in early development, but production flows must enforce Supabase auth.
 - Add token usage tracking, session title generation, and empty states for new users.
 - Tighten security (auth guards on API routes, per-user ownership checks) and clean up UI details (responsive tweaks, loading animations, specify button lifecycle).

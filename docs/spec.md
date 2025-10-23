@@ -10,6 +10,16 @@ If user clicks "add prompt" next to one of the options, an input field with a su
 
 If user chooses "specify", its the same but there's no option name, just this new prompt with 4 new options generated on the right. Under the hood, 5th child is added to the same parent with this prompt and with empty title. getChildren is called to generate 4 new options.
 
+# Canvas Primitives
+React Flow nodes expose a consistent structure that feeds both the canvas and sidebar components:
+- `id`: global identifier for the node.
+- `title`: immutable option or session label rendered in the block header.
+- `prompt`: editable user-authored text displayed beneath the title when present.
+- `variant`: `"prompt" | "option" | "specify"` to switch visual treatments and available actions.
+- `status`: `"idle" | "loading" | "error"` used for badges or subtle state indicators in Phase 2.
+
+Sidebar entries reuse the same data (id, title, status) so the Zustand store can keep both views synchronized.
+
 # Visual
 All blocks on the canvas have the same style. Soft, modern, rounded. Arrows are curved, start on the right of a block, end on the left of another block. Blocks rely on React Flow's default positioning and collision handling. They can be drag'n'dropped.
 
@@ -91,7 +101,7 @@ The whole tree is described by a JSON and is updated as soon as the JSON is upda
   ]
 }
 ```
-"Specify" button exists in UI only until used. If user does so, a new child is added to the same parent the button comes from. The block is updated then to become a new option with a newly added prompt but without a name/title. New "specify" button is added automatically by the UI because (no addidional functions or rules, it's created always in addition to the existing options/children).
+"Specify" button exists in UI only until used. If user does so, a new child is added to the same parent the button comes from. The block is updated then to become a new option with a newly added prompt but without a name/title. New "specify" button is added automatically by the UI because (no addidional functions or rules, it's created always in addition to the existing options/children). Once converted, the specify node keeps an empty title, displays the user prompt as the body text, and supports further branching exactly like a titled option.
 
 # Implementation Plan
 
@@ -108,9 +118,9 @@ The whole tree is described by a JSON and is updated as soon as the JSON is upda
 ## Phase 3 — API & Persistence
 - Create Supabase tables and SQL helpers for session CRUD; wire state store to persist `tree_json` snapshots.
 - Implement Next.js API routes for session creation and node expansion, including payload validation with Zod.
-- Integrate OpenAI calls with streamed responses forwarded to the client while persisting updates incrementally in Supabase.
+- Integrate OpenAI calls with streamed responses forwarded to the client while persisting debounced partial updates in Supabase so the tree stays close to real time.
 
 ## Phase 4 — Polish & Hardening
-- Refine error handling: rollback UI state on failures, surface retry controls, and gate inputs while requests are in flight.
+- Refine error handling: rollback UI state on failures, surface retry controls, and gate inputs while requests are in flight. Unauthenticated local usage is fine during early development, but production flows must enforce Supabase auth.
 - Add token usage tracking, session title generation, and empty states for new users.
 - Tighten security (auth guards on API routes, per-user ownership checks) and clean up UI details (responsive tweaks, loading animations, specify button lifecycle).
