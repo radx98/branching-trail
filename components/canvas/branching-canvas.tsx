@@ -424,6 +424,20 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
 
   const showLoadingOverlay = isLoading;
 
+  const handleTextareaKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (
+        event.key === "Enter"
+        && !event.shiftKey
+        && !event.nativeEvent.isComposing
+      ) {
+        event.preventDefault();
+        event.currentTarget.form?.requestSubmit();
+      }
+    },
+    [],
+  );
+
   return (
     <CanvasBlock
       className={`w-72 min-w-[18rem]${
@@ -494,6 +508,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                       setDraftPrompt(event.target.value);
                       adjustTextareaHeight(event.currentTarget);
                     }}
+                    onKeyDown={handleTextareaKeyDown}
                     placeholder="Add a prompt to shape this branch..."
                     className="min-h-0 w-full resize-none overflow-hidden rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] py-3 pl-4 pr-12 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
                   />
@@ -531,6 +546,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                   setDraftPrompt(event.target.value);
                   adjustTextareaHeight(event.currentTarget);
                 }}
+                onKeyDown={handleTextareaKeyDown}
                 placeholder="Specify"
                 ref={isSpecify ? specifyTextareaRef : undefined}
                 rows={1}
@@ -573,6 +589,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                     setDraftPrompt(event.target.value);
                     adjustTextareaHeight(event.currentTarget);
                   }}
+                  onKeyDown={handleTextareaKeyDown}
                   placeholder="Describe what you want to explore..."
                   className="min-h-0 w-full resize-none overflow-hidden rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] py-3 pl-4 pr-12 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
                 />
