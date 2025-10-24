@@ -13,7 +13,14 @@ import {
   Background,
   ReactFlowProvider,
 } from "reactflow";
-import { useMemo, useState, useEffect, useCallback } from "react";
+import {
+  useMemo,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
+import type { SVGProps } from "react";
 import "reactflow/dist/style.css";
 
 type BranchNodeData = {
@@ -61,6 +68,54 @@ const JITTER_X_RANGE = 48;
 const JITTER_Y_RANGE = 60;
 const CHILD_LANE_SPACING = 1.15;
 const MIN_LANE_GAP = 0.9;
+
+const IconButtonPlus = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    className="h-4 w-4"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+
+const IconButtonEdit = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    className="h-4 w-4"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M15.5 5.5L18.5 8.5M4 20l2.9-.4L18.5 8.5l-3-3L4 17z" />
+  </svg>
+);
+
+const IconButtonSend = (props: SVGProps<SVGSVGElement>) => (
+  <svg
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    className="h-4 w-4"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M4 12L20 5l-5 14-3-6-6-1z" />
+  </svg>
+);
 
 const hashNodeId = (value: string) => {
   let hash = 0;
@@ -282,10 +337,10 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
     }
     return false;
   });
-  const [draftPrompt, setDraftPrompt] = useState(node.prompt);
+  const [draftPrompt, setDraftPrompt] = useState(node.prompt.trimStart());
 
   useEffect(() => {
-    setDraftPrompt(node.prompt);
+    setDraftPrompt(node.prompt.trimStart());
   }, [node.prompt]);
 
   useEffect(() => {
@@ -324,7 +379,6 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
       return;
     }
     void onSpecifyPrompt(sessionId, parentId, trimmed);
-    setDraftPrompt("");
     setIsEditing(false);
   };
 
@@ -332,8 +386,27 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
   const isLoading = node.status === "loading";
   const isError = node.status === "error";
   const isOption = node.variant === "option";
-  const hasPrompt = node.prompt.trim().length > 0;
+  const displayPrompt = node.prompt.trimStart();
+  const hasPrompt = displayPrompt.length > 0;
   const showTitle = isOption && node.title;
+  const hasChildren = node.children.length > 0;
+  const hasTitle = Boolean(node.title?.trim());
+  const specifyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const adjustSpecifyHeight = useCallback(() => {
+    if (!specifyTextareaRef.current) {
+      return;
+    }
+    const element = specifyTextareaRef.current;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    if (isSpecify) {
+      adjustSpecifyHeight();
+    }
+  }, [isSpecify, draftPrompt, adjustSpecifyHeight]);
 
   return (
     <CanvasBlock
@@ -348,7 +421,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
           className="!h-3 !w-3 !bg-[color:var(--color-accent)]"
         />
       ) : null}
-      {node.variant !== "specify" ? (
+      {node.variant !== "specify" && hasChildren ? (
         <Handle
           type="source"
           position={Position.Right}
@@ -368,7 +441,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                 ) : null}
               </div>
               {!isEditing ? (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   {isLoading ? (
                     <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--color-foreground-soft)]">
                       Expanding…
@@ -380,11 +453,15 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                     onClick={(event) => {
                       event.stopPropagation();
                       setIsEditing(true);
-                      setDraftPrompt(node.prompt);
+                      setDraftPrompt(node.prompt.trimStart());
                     }}
-                    className="text-sm font-medium text-[color:var(--color-accent)] hover:opacity-80 disabled:opacity-50"
+                    className="inline-flex items-center justify-center rounded-full p-2 text-[color:var(--color-accent)] hover:opacity-80 disabled:opacity-50"
+                    aria-label={hasPrompt ? "Edit prompt" : "Add prompt"}
                   >
-                    {hasPrompt ? "Edit" : "Add prompt"}
+                    {hasPrompt ? <IconButtonEdit /> : <IconButtonPlus />}
+                    <span className="sr-only">
+                      {hasPrompt ? "Edit prompt" : "Add prompt"}
+                    </span>
                   </button>
                 </div>
               ) : null}
@@ -400,7 +477,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                   value={draftPrompt}
                   onChange={(event) => setDraftPrompt(event.target.value)}
                   placeholder="Add a prompt to shape this branch..."
-                  className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
+                  className="min-h-[96px] resize-none rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
                 />
                 <div className="flex items-center justify-end gap-3">
                   {isLoading && (
@@ -408,13 +485,16 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                       Refreshing…
                     </span>
                   )}
-                  <PrimaryButton type="submit">Send</PrimaryButton>
+                  <PrimaryButton type="submit" aria-label="Send prompt">
+                    <IconButtonSend />
+                    <span className="sr-only">Send</span>
+                  </PrimaryButton>
                 </div>
               </form>
             ) : hasPrompt ? (
               <>
                 <p className="text-sm leading-relaxed text-[color:var(--color-foreground-muted)]">
-                  {node.prompt}
+                  {displayPrompt}
                 </p>
                 {isLoading ? (
                   <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--color-foreground-soft)]">
@@ -439,12 +519,25 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
           >
             <textarea
               value={draftPrompt}
-              onChange={(event) => setDraftPrompt(event.target.value)}
+              onChange={(event) => {
+                setDraftPrompt(event.target.value);
+                adjustSpecifyHeight();
+              }}
               placeholder="Specify"
-              className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
+              ref={isSpecify ? specifyTextareaRef : undefined}
+              rows={1}
+              onInput={adjustSpecifyHeight}
+              className="min-h-0 resize-none overflow-hidden rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
             />
             <div className="flex items-center justify-end">
-              <PrimaryButton type="submit">Send</PrimaryButton>
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-full p-2 text-[color:var(--color-accent)] hover:opacity-80"
+                aria-label="Send specify prompt"
+              >
+                <IconButtonSend />
+                <span className="sr-only">Send specify prompt</span>
+              </button>
             </div>
           </form>
         ) : null}
@@ -464,26 +557,35 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                     </h3>
                   ) : null}
                 </div>
-                <PrimaryButton type="submit">Send</PrimaryButton>
+                <PrimaryButton type="submit" aria-label="Send prompt">
+                  <IconButtonSend />
+                  <span className="sr-only">Send</span>
+                </PrimaryButton>
               </div>
               <textarea
                 value={draftPrompt}
                 onChange={(event) => setDraftPrompt(event.target.value)}
                 placeholder="Describe what you want to explore..."
-                className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
+                className="min-h-[96px] resize-none rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
               />
             </form>
           ) : (
             <>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  {node.title ? (
+              <div
+                className={`flex ${
+                  hasTitle
+                    ? "items-start justify-between gap-3"
+                    : "justify-end"
+                }`}
+              >
+                {hasTitle ? (
+                  <div className="min-w-0 flex-1">
                     <h3 className="text-lg font-semibold tracking-tight text-[color:var(--color-foreground-strong)]">
                       {node.title}
                     </h3>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-3">
+                  </div>
+                ) : null}
+                <div className="flex items-center gap-2">
                   {isLoading && (
                     <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--color-foreground-soft)]">
                       Refreshing…
@@ -495,14 +597,16 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                       event.stopPropagation();
                       setIsEditing(true);
                     }}
-                    className="text-sm font-medium text-[color:var(--color-accent)] hover:opacity-80"
+                    className="inline-flex items-center justify-center rounded-full p-2 text-[color:var(--color-accent)] hover:opacity-80"
+                    aria-label="Edit prompt"
                   >
-                    Edit
+                    <IconButtonEdit />
+                    <span className="sr-only">Edit prompt</span>
                   </button>
                 </div>
               </div>
               <p className="text-sm leading-relaxed text-[color:var(--color-foreground-muted)]">
-                {node.prompt}
+                {displayPrompt}
               </p>
             </>
           )
