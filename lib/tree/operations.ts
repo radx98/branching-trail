@@ -49,15 +49,22 @@ export function ensureSpecifyChild(
     return;
   }
 
-  const hasSpecify = target.children.some((child) => child.variant === "specify");
-  if (!hasSpecify) {
-    target.children = [...target.children, specifyNodeFactory(target.id)];
-  } else {
-    // Move specify node to the end to keep ordering predictable.
-    const specify = target.children.filter((child) => child.variant === "specify");
-    const rest = target.children.filter((child) => child.variant !== "specify");
-    target.children = [...rest, ...specify];
+  const structuralChildren = target.children.filter(
+    (child) => child.variant !== "specify",
+  );
+
+  if (structuralChildren.length === 0) {
+    target.children = [];
+    return;
   }
+
+  const existingSpecify = target.children.find(
+    (child) => child.variant === "specify",
+  );
+
+  const specifyChild = existingSpecify ?? specifyNodeFactory(target.id);
+
+  target.children = [...structuralChildren, specifyChild];
 }
 
 export function walkTree(
