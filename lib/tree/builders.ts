@@ -3,7 +3,7 @@ import type { BranchNode } from "@/lib/types/tree";
 export function createSpecifyNode(parentId: string): BranchNode {
   return {
     id: `${parentId}::specify`,
-    title: "Specify",
+    title: "",
     prompt: "",
     variant: "specify",
     status: "idle",

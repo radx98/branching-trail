@@ -118,9 +118,15 @@ const buildFlowStructure = (
 
 const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
   const { node, parentId, sessionId, onSubmitPrompt, onSpecifyPrompt } = data;
-  const [isEditing, setIsEditing] = useState(
-    () => (node.variant === "specify" ? false : node.prompt.length === 0),
-  );
+  const [isEditing, setIsEditing] = useState(() => {
+    if (node.variant === "specify") {
+      return true;
+    }
+    if (node.variant === "prompt" && node.prompt.length === 0 && parentId === null) {
+      return true;
+    }
+    return false;
+  });
   const [draftPrompt, setDraftPrompt] = useState(node.prompt);
 
   useEffect(() => {
@@ -128,10 +134,20 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
   }, [node.prompt]);
 
   useEffect(() => {
-    if (!node.prompt && node.variant !== "specify") {
+    if (node.variant === "specify") {
       setIsEditing(true);
     }
-  }, [node.prompt]);
+  }, [node.variant]);
+
+  useEffect(() => {
+    if (
+      node.variant === "prompt"
+      && node.prompt.length === 0
+      && parentId === null
+    ) {
+      setIsEditing(true);
+    }
+  }, [node.prompt, node.variant, parentId]);
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -160,6 +176,9 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
   const isSpecify = node.variant === "specify";
   const isLoading = node.status === "loading";
   const isError = node.status === "error";
+  const isOption = node.variant === "option";
+  const hasPrompt = node.prompt.trim().length > 0;
+  const showTitle = isOption && node.title;
 
   return (
     <CanvasBlock className="w-72 min-w-[18rem]">
@@ -179,61 +198,135 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
       ) : null}
 
       <div className="flex flex-col gap-3">
-        <header className="flex flex-col gap-1">
-          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-400">
-            {node.variant}
-          </span>
-          {node.title ? (
-            <h3 className="text-lg font-semibold tracking-tight text-slate-900">
-              {node.title}
-            </h3>
-          ) : null}
-        </header>
+        {isOption ? (
+          <>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                {showTitle ? (
+                  <h3 className="text-lg font-semibold tracking-tight text-slate-900">
+                    {node.title}
+                  </h3>
+                ) : null}
+              </div>
+              {!isEditing ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(true);
+                    setDraftPrompt(node.prompt);
+                  }}
+                  className="text-sm font-medium text-indigo-500 hover:text-indigo-600"
+                >
+                  {hasPrompt ? "Edit" : "Add prompt"}
+                </button>
+              ) : null}
+            </div>
 
-        {(isSpecify || isEditing) && (
+            {isEditing ? (
+              <form
+                onSubmit={handleSubmit}
+                className="flex flex-col gap-2"
+              >
+                <textarea
+                  value={draftPrompt}
+                  onChange={(event) => setDraftPrompt(event.target.value)}
+                  placeholder="Add a prompt to shape this branch..."
+                  className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
+                />
+                <div className="flex items-center justify-end gap-3">
+                  {isLoading && (
+                    <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                      Refreshing…
+                    </span>
+                  )}
+                  <PrimaryButton type="submit">Send</PrimaryButton>
+                </div>
+              </form>
+            ) : hasPrompt ? (
+              <>
+                <p className="text-sm leading-relaxed text-slate-600">
+                  {node.prompt}
+                </p>
+                {isLoading ? (
+                  <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                    Refreshing…
+                  </span>
+                ) : null}
+              </>
+            ) : null}
+          </>
+        ) : null}
+
+        {isSpecify ? (
           <form
-            onSubmit={isSpecify ? handleSpecify : handleSubmit}
+            onSubmit={handleSpecify}
             className="flex flex-col gap-2"
           >
             <textarea
               value={draftPrompt}
               onChange={(event) => setDraftPrompt(event.target.value)}
-              placeholder={
-                isSpecify
-                  ? "Add a custom prompt for this branch"
-                  : "Describe what you want to explore..."
-              }
+              placeholder="Specify"
               className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
             />
-            <PrimaryButton type="submit">
-              {isSpecify ? "Create prompt" : "Save prompt"}
-            </PrimaryButton>
-          </form>
-        )}
-
-        {!isSpecify && !isEditing && (
-          <div className="flex flex-col gap-3">
-            <p className="text-sm leading-relaxed text-slate-600">
-              {node.prompt}
-            </p>
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="text-sm font-medium text-indigo-500 hover:text-indigo-600"
-              >
-                Edit prompt
-              </button>
-              {isLoading && (
-                <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
-                  Refreshing…
-                </span>
-              )}
+            <div className="flex items-center justify-end">
+              <PrimaryButton type="submit">Send</PrimaryButton>
             </div>
-          </div>
-        )}
+          </form>
+        ) : null}
 
-        {isError && !isEditing && (
+        {!isSpecify && !isOption ? (
+          isEditing ? (
+            <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  {node.title ? (
+                    <h3 className="text-lg font-semibold tracking-tight text-slate-900">
+                      {node.title}
+                    </h3>
+                  ) : null}
+                </div>
+                <PrimaryButton type="submit">Send</PrimaryButton>
+              </div>
+              <textarea
+                value={draftPrompt}
+                onChange={(event) => setDraftPrompt(event.target.value)}
+                placeholder="Describe what you want to explore..."
+                className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
+              />
+            </form>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  {node.title ? (
+                    <h3 className="text-lg font-semibold tracking-tight text-slate-900">
+                      {node.title}
+                    </h3>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-3">
+                  {isLoading && (
+                    <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                      Refreshing…
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="text-sm font-medium text-indigo-500 hover:text-indigo-600"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </div>
+              <p className="text-sm leading-relaxed text-slate-600">
+                {node.prompt}
+              </p>
+            </>
+          )
+        ) : null}
+
+        {isError && !isEditing ? (
           <div className="flex items-start justify-between gap-3 rounded-[var(--radius-card)] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
             <span className="leading-relaxed">
               Generation failed. Try refining the prompt and resubmitting.
@@ -246,36 +339,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
               Retry
             </button>
           </div>
-        )}
-
-        {node.variant === "option" && !node.prompt && !isEditing && (
-          <button
-            type="button"
-            onClick={() => {
-              setIsEditing(true);
-              setDraftPrompt("");
-            }}
-            className="text-sm font-medium text-indigo-500 hover:text-indigo-600"
-          >
-            Add prompt
-          </button>
-        )}
-
-        {isSpecify && !isEditing && (
-          <button
-            type="button"
-            onClick={() => setIsEditing(true)}
-            className="text-sm font-medium text-indigo-500 hover:text-indigo-600"
-          >
-            Specify direction
-          </button>
-        )}
-
-        {isLoading && node.variant !== "option" && (
-          <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
-            Refreshing…
-          </span>
-        )}
+        ) : null}
       </div>
     </CanvasBlock>
   );
