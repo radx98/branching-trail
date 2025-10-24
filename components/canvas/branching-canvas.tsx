@@ -2,7 +2,7 @@
 
 import { CanvasBlock } from "@/components/ui/canvas-block";
 import { PrimaryButton } from "@/components/ui/primary-button";
-import type { BranchNode, SessionTree } from "@/lib/state/session-store";
+import type { BranchNode, SessionTree } from "@/lib/types/tree";
 import {
   type Node,
   type NodeProps,
@@ -20,22 +20,30 @@ type BranchNodeData = {
   sessionId: string;
   node: BranchNode;
   parentId: string | null;
-  onSubmitPrompt: (sessionId: string, nodeId: string, prompt: string) => void;
+  onSubmitPrompt: (
+    sessionId: string,
+    nodeId: string,
+    prompt: string,
+  ) => Promise<void>;
   onSpecifyPrompt: (
     sessionId: string,
     parentNodeId: string,
     prompt: string,
-  ) => void;
+  ) => Promise<void>;
 };
 
 type BranchingCanvasProps = {
   session: SessionTree | null;
-  onSubmitPrompt: (sessionId: string, nodeId: string, prompt: string) => void;
+  onSubmitPrompt: (
+    sessionId: string,
+    nodeId: string,
+    prompt: string,
+  ) => Promise<void>;
   onSpecifyPrompt: (
     sessionId: string,
     parentNodeId: string,
     prompt: string,
-  ) => void;
+  ) => Promise<void>;
 };
 
 type BuildContext = {
@@ -131,7 +139,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
     if (!trimmed) {
       return;
     }
-    onSubmitPrompt(sessionId, node.id, trimmed);
+    void onSubmitPrompt(sessionId, node.id, trimmed);
     setIsEditing(false);
   };
 
@@ -144,13 +152,14 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
     if (!parentId) {
       return;
     }
-    onSpecifyPrompt(sessionId, parentId, trimmed);
+    void onSpecifyPrompt(sessionId, parentId, trimmed);
     setDraftPrompt("");
     setIsEditing(false);
   };
 
   const isSpecify = node.variant === "specify";
   const isLoading = node.status === "loading";
+  const isError = node.status === "error";
 
   return (
     <CanvasBlock className="w-72 min-w-[18rem]">
@@ -221,6 +230,21 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                 </span>
               )}
             </div>
+          </div>
+        )}
+
+        {isError && !isEditing && (
+          <div className="flex items-start justify-between gap-3 rounded-[var(--radius-card)] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+            <span className="leading-relaxed">
+              Generation failed. Try refining the prompt and resubmitting.
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsEditing(true)}
+              className="shrink-0 rounded-full border border-rose-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-600 hover:bg-rose-100/60"
+            >
+              Retry
+            </button>
           </div>
         )}
 

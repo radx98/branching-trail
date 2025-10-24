@@ -2,126 +2,36 @@
 
 import { create } from "zustand";
 
-export type BranchNodeVariant = "prompt" | "option" | "specify";
-export type BranchNodeStatus = "idle" | "loading" | "error";
-
-export interface BranchNode {
-  id: string;
-  title: string;
-  prompt: string;
-  variant: BranchNodeVariant;
-  status: BranchNodeStatus;
-  children: BranchNode[];
-}
-
-export interface SessionTree {
-  id: string;
-  title: string;
-  isPlaceholder: boolean;
-  root: BranchNode;
-}
+import type { BranchNode, SessionTree } from "@/lib/types/tree";
+import { createSpecifyNode } from "@/lib/tree/builders";
 
 type SessionState = {
   sessions: SessionTree[];
   activeSessionId: string | null;
+  isHydrating: boolean;
+  hasHydrated: boolean;
+  lastError: string | null;
   createSession: () => void;
   selectSession: (sessionId: string) => void;
-  submitPrompt: (sessionId: string, nodeId: string, prompt: string) => void;
+  submitPrompt: (
+    sessionId: string,
+    nodeId: string,
+    prompt: string,
+  ) => Promise<void>;
   commitSpecifyPrompt: (
     sessionId: string,
     parentNodeId: string,
     prompt: string,
-  ) => void;
+  ) => Promise<void>;
+  hydrate: () => Promise<void>;
+  clearError: () => void;
 };
 
-const MOCK_OPTION_SETS = [
-  [
-    "Strategy & Simulation Focus",
-    "Action & Adventure Beats",
-    "Puzzle & Logic Paths",
-    "Story & Roleplay Hooks",
-  ],
-  [
-    "Audience Personas",
-    "Core Loop Variations",
-    "Monetization Scenarios",
-    "Retention Experiments",
-  ],
-  [
-    "Visual Moodboards",
-    "Systems & Mechanics",
-    "Narrative Branches",
-    "Market Positioning",
-  ],
-  [
-    "Launch Roadmap",
-    "Content Update Ideas",
-    "Community Programs",
-    "Tech Stack Notes",
-  ],
-] as const;
+const EMPTY_STATE_NOTE =
+  "Create a fresh session to start exploring branching ideas.";
 
-const MOCK_PROMPT_SEEDS = [
-  "Lean into repeatable loops that encourage tinkering.",
-  "Highlight high-sensation moments and reactive controls.",
-  "Design clever twists that reward insight and pattern spotting.",
-  "Focus on character arcs and emergent storytelling avenues.",
-] as const;
-
-const MOCK_PLACEHOLDER_NOTE =
-  "Placeholder dataset for Phase 2. Replace with API-backed data in Phase 3.";
-
-const createSpecifyNode = (parentId: string): BranchNode => ({
-  id: `${parentId}::specify`,
-  title: "Specify",
-  prompt: "",
-  variant: "specify",
-  status: "idle",
-  children: [],
-});
-
-const hashString = (value: string): number => {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value.charCodeAt(index);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
-  }
-  return Math.abs(hash);
-};
-
-const buildMockChildren = (
-  node: BranchNode,
-  depth: number,
-): BranchNode[] => {
-  const seed = hashString(node.id) + depth;
-  const optionSet = MOCK_OPTION_SETS[seed % MOCK_OPTION_SETS.length];
-  const promptSeed =
-    MOCK_PROMPT_SEEDS[(seed + depth) % MOCK_PROMPT_SEEDS.length];
-
-  const options = optionSet.map((title, index) => ({
-    id: `${node.id}::opt-${index + 1}`,
-    title,
-    prompt: "",
-    variant: "option" as const,
-    status: "idle" as const,
-    children: [],
-  }));
-
-  if (node.variant !== "specify") {
-    return [...options, createSpecifyNode(node.id)];
-  }
-
-  return options.map((option, idx) => ({
-    ...option,
-    prompt: idx === 0 ? promptSeed : "",
-  }));
-};
-
-const cloneNode = (node: BranchNode): BranchNode => ({
-  ...node,
-  children: node.children.map(cloneNode),
-});
+const cloneSessionTree = (session: SessionTree): SessionTree =>
+  JSON.parse(JSON.stringify(session)) as SessionTree;
 
 const updateNode = (
   node: BranchNode,
@@ -131,98 +41,27 @@ const updateNode = (
   if (node.id === nodeId) {
     return updater(node);
   }
+
   return {
     ...node,
-    children: node.children.map((child) => updateNode(child, nodeId, updater)),
+    children: node.children.map((child) =>
+      updateNode(child, nodeId, updater),
+    ),
   };
 };
 
-const findNode = (
-  node: BranchNode,
-  nodeId: string,
-): { node: BranchNode; depth: number } | null => {
-  if (node.id === nodeId) {
-    return { node, depth: 0 };
-  }
-  for (const child of node.children) {
-    const found = findNode(child, nodeId);
-    if (found) {
-      return { node: found.node, depth: found.depth + 1 };
-    }
-  }
-  return null;
-};
+const findSessionIndex = (sessions: SessionTree[], sessionId: string) =>
+  sessions.findIndex((session) => session.id === sessionId);
 
-const scheduleMockExpansion = (
-  setState: (
-    partial:
-      | SessionState
-      | Partial<SessionState>
-      | ((state: SessionState) => SessionState | Partial<SessionState>),
-    replace?: boolean,
-  ) => void,
-  getState: () => SessionState,
-  sessionId: string,
-  nodeId: string,
-) => {
-  const session = getState().sessions.find((item) => item.id === sessionId);
-  if (!session) {
-    return;
-  }
-
-  const match = findNode(session.root, nodeId);
-  if (!match) {
-    return;
-  }
-
-  const depth = match.depth;
-  const { node } = match;
-
-  setState((state) => ({
-    ...state,
-    sessions: state.sessions.map((item) =>
-      item.id === sessionId
-        ? {
-            ...item,
-            root: updateNode(item.root, nodeId, (current) => ({
-              ...current,
-              status: "loading",
-              children: [],
-            })),
-          }
-        : item,
-    ),
-  }));
-
-  const children = buildMockChildren(node, depth);
-
-  setTimeout(() => {
-    setState((state) => ({
-      ...state,
-      sessions: state.sessions.map((item) =>
-        item.id === sessionId
-          ? {
-              ...item,
-              root: updateNode(item.root, nodeId, (current) => ({
-                ...current,
-                status: "idle",
-                children,
-              })),
-            }
-          : item,
-      ),
-    }));
-  }, 650);
-};
-
-const createEmptySession = (): SessionTree => {
-  const sessionId = crypto.randomUUID();
+const createPlaceholderSession = (): SessionTree => {
+  const sessionId = `draft-${crypto.randomUUID()}`;
   const rootId = `${sessionId}::root`;
 
   return {
     id: sessionId,
     title: "New session",
     isPlaceholder: true,
+    tokenUsage: null,
     root: {
       id: rootId,
       title: "New session",
@@ -234,124 +73,95 @@ const createEmptySession = (): SessionTree => {
   };
 };
 
-const initialSessions: SessionTree[] = [
-  {
-    id: "session-browser-game",
-    title: "Indie Browser Game Explorer",
-    isPlaceholder: true,
-    root: {
-      id: "session-browser-game::root",
-      title: "Indie Browser Game Explorer",
-      prompt:
-        "Explore what makes a standout browser-based game for a small team.",
-      variant: "prompt",
-      status: "idle",
-      children: [
-        {
-          id: "session-browser-game::root::opt-1",
-          title: "Strategy & Simulation Focus",
-          prompt: "",
-          variant: "option",
-          status: "idle",
-          children: [],
-        },
-        {
-          id: "session-browser-game::root::opt-2",
-          title: "Action & Adventure Beats",
-          prompt: "",
-          variant: "option",
-          status: "idle",
-          children: [],
-        },
-        {
-          id: "session-browser-game::root::opt-3",
-          title: "Puzzle & Logic Paths",
-          prompt: "",
-          variant: "option",
-          status: "idle",
-          children: [],
-        },
-        {
-          id: "session-browser-game::root::opt-4",
-          title: "Story & Roleplay Hooks",
-          prompt: "",
-          variant: "option",
-          status: "idle",
-          children: [],
-        },
-        createSpecifyNode("session-browser-game::root"),
-      ],
-    },
-  },
-  {
-    id: "session-new-product",
-    title: "Concept Discovery Playground",
-    isPlaceholder: true,
-    root: {
-      id: "session-new-product::root",
-      title: "Concept Discovery Playground",
-      prompt: "Map fresh product concepts for hybrid productivity tools.",
-      variant: "prompt",
-      status: "idle",
-      children: [
-        {
-          id: "session-new-product::root::opt-1",
-          title: "Audience Personas",
-          prompt: "",
-          variant: "option",
-          status: "idle",
-          children: [],
-        },
-        {
-          id: "session-new-product::root::opt-2",
-          title: "Core Loop Variations",
-          prompt: "",
-          variant: "option",
-          status: "idle",
-          children: [],
-        },
-        {
-          id: "session-new-product::root::opt-3",
-          title: "Monetization Scenarios",
-          prompt: "",
-          variant: "option",
-          status: "idle",
-          children: [],
-        },
-        {
-          id: "session-new-product::root::opt-4",
-          title: "Retention Experiments",
-          prompt: "",
-          variant: "option",
-          status: "idle",
-          children: [],
-        },
-        createSpecifyNode("session-new-product::root"),
-      ],
-    },
-  },
-].map((session) => ({ ...session, root: cloneNode(session.root) }));
-
-const normaliseSessionTitle = (prompt: string): string => {
-  if (!prompt.trim()) {
-    return "New session";
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
   }
-  const trimmed = prompt.trim();
-  const words = trimmed.split(/\s+/).slice(0, 6);
-  return words
-    .map((word) => word[0]?.toUpperCase() + word.slice(1))
-    .join(" ");
+  if (typeof error === "string") {
+    return error;
+  }
+  return fallback;
+}
+
+async function requestJson<T>(
+  url: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const headers = new Headers(init.headers);
+
+  if (init.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(url, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+
+  let data: unknown = null;
+  const contentType = response.headers.get("content-type");
+
+  if (contentType?.includes("application/json")) {
+    try {
+      data = await response.json();
+    } catch (error) {
+      data = null;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof (data as { error?: string } | null)?.error === "string"
+        ? (data as { error?: string }).error
+        : `Request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+
+  return (data ?? {}) as T;
+}
+
+type ApiResponse<T> = T & {
+  meta?: {
+    backend?: "supabase" | "memory";
+    lastError?: string | null;
+  };
 };
 
+const logStorageWarning = (meta?: ApiResponse<unknown>["meta"]) => {
+  if (!meta) {
+    return;
+  }
+  if (meta.backend === "memory") {
+    console.warn(
+      "[sessions] Using in-memory session store. Supabase writes are disabled",
+      meta.lastError ? `(${meta.lastError})` : "",
+    );
+  }
+};
+
+const getJson = <T,>(url: string) =>
+  requestJson<ApiResponse<T>>(url, { method: "GET" });
+
+const postJson = <T,>(url: string, body: unknown) =>
+  requestJson<ApiResponse<T>>(url, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
 export const useSessionStore = create<SessionState>((set, get) => ({
-  sessions: initialSessions,
-  activeSessionId: initialSessions[0]?.id ?? null,
+  sessions: [],
+  activeSessionId: null,
+  isHydrating: false,
+  hasHydrated: false,
+  lastError: null,
   createSession: () => {
-    const session = createEmptySession();
+    const session = createPlaceholderSession();
     set((state) => ({
       ...state,
       sessions: [session, ...state.sessions],
       activeSessionId: session.id,
+      lastError: null,
     }));
   },
   selectSession: (sessionId: string) =>
@@ -359,74 +169,236 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       ...state,
       activeSessionId: sessionId,
     })),
-  submitPrompt: (sessionId, nodeId, prompt) => {
-    const state = get();
-    const session = state.sessions.find((item) => item.id === sessionId);
-    if (!session) {
+  hydrate: async () => {
+    const { hasHydrated, isHydrating } = get();
+    if (hasHydrated || isHydrating) {
       return;
     }
 
-    const updatedSessions = state.sessions.map((item) =>
-      item.id === sessionId
-        ? {
-            ...item,
-            title:
-              item.root.id === nodeId
-                ? normaliseSessionTitle(prompt)
-                : item.title,
-            root: updateNode(item.root, nodeId, (current) => ({
-              ...current,
-              prompt,
-              title:
-                current.variant === "prompt" && current.title === "New session"
-                  ? normaliseSessionTitle(prompt)
-                  : current.title,
-            })),
-          }
-        : item,
-    );
+    set((state) => ({
+      ...state,
+      isHydrating: true,
+      lastError: null,
+    }));
 
-    set({ ...state, sessions: updatedSessions });
+    try {
+      const data = await getJson<{ sessions: SessionTree[] }>("/api/sessions");
+      logStorageWarning(data.meta);
+      const sessions = (data.sessions ?? []).map((session) => ({
+        ...session,
+        isPlaceholder: false,
+      }));
 
-    scheduleMockExpansion(set, get, sessionId, nodeId);
+      set((state) => {
+        const currentActive = state.activeSessionId;
+        const activeSession =
+          currentActive && sessions.some((item) => item.id === currentActive)
+            ? currentActive
+            : sessions[0]?.id ?? currentActive;
+
+        return {
+          ...state,
+          sessions,
+          activeSessionId: activeSession,
+          isHydrating: false,
+          hasHydrated: true,
+        };
+      });
+    } catch (error) {
+      console.error("Failed to hydrate sessions", error);
+      set((state) => ({
+        ...state,
+        isHydrating: false,
+        lastError: extractErrorMessage(error, "Failed to load sessions."),
+      }));
+    }
   },
-  commitSpecifyPrompt: (sessionId, parentNodeId, prompt) => {
+  clearError: () =>
+    set((state) => ({
+      ...state,
+      lastError: null,
+    })),
+  submitPrompt: async (sessionId, nodeId, prompt) => {
     const state = get();
-    const session = state.sessions.find((item) => item.id === sessionId);
-    if (!session) {
+    const sessionIndex = findSessionIndex(state.sessions, sessionId);
+    if (sessionIndex === -1) {
       return;
     }
 
-    const newNode: BranchNode = {
-      id: `${parentNodeId}::spec-${crypto.randomUUID()}`,
-      title: "",
-      prompt,
-      variant: "prompt",
-      status: "loading",
-      children: [],
-    };
+    const session = state.sessions[sessionIndex];
+    const snapshot = cloneSessionTree(session);
 
-    const sessionsWithSpecify = state.sessions.map((item) =>
-      item.id === sessionId
-        ? {
-            ...item,
-            root: updateNode(item.root, parentNodeId, (current) => ({
-              ...current,
-              children: [
-                ...current.children
-                  .filter((child) => child.variant !== "specify"),
-                newNode,
-                createSpecifyNode(parentNodeId),
-              ],
-            })),
-          }
-        : item,
-    );
+    set((current) => {
+      const sessions = current.sessions.slice();
+      sessions[sessionIndex] = {
+        ...sessions[sessionIndex],
+        root: updateNode(sessions[sessionIndex].root, nodeId, (node) => ({
+          ...node,
+          prompt,
+          status: "loading",
+          children: [],
+        })),
+      };
+      return {
+        ...current,
+        sessions,
+        lastError: null,
+      };
+    });
 
-    set({ ...state, sessions: sessionsWithSpecify });
+    try {
+      if (session.isPlaceholder) {
+        const data = await postJson<{ session: SessionTree }>(
+          "/api/sessions",
+          { prompt },
+        );
+        logStorageWarning(data.meta);
+        const createdSession: SessionTree = {
+          ...data.session,
+          isPlaceholder: false,
+        };
 
-    scheduleMockExpansion(set, get, sessionId, newNode.id);
+        set((current) => {
+          const sessions = current.sessions.slice();
+          sessions[sessionIndex] = createdSession;
+          return {
+            ...current,
+            sessions,
+            activeSessionId: createdSession.id,
+          };
+        });
+      } else {
+        const data = await postJson<{ session: SessionTree }>(
+          `/api/tree/${session.id}/expand`,
+          { mode: "submit", nodeId, prompt },
+        );
+        logStorageWarning(data.meta);
+        const updatedSession: SessionTree = {
+          ...data.session,
+          isPlaceholder: false,
+        };
+
+        set((current) => {
+          const sessions = current.sessions.slice();
+          sessions[sessionIndex] = updatedSession;
+          return {
+            ...current,
+            sessions,
+          };
+        });
+      }
+    } catch (error) {
+      console.error("Failed to submit prompt", error);
+      set((current) => {
+        const sessions = current.sessions.slice();
+        sessions[sessionIndex] = {
+          ...snapshot,
+          root: updateNode(snapshot.root, nodeId, (node) => ({
+            ...node,
+            prompt,
+            status: "error",
+          })),
+        };
+
+        return {
+          ...current,
+          sessions,
+          lastError: extractErrorMessage(
+            error,
+            "Failed to submit prompt. Please try again.",
+          ),
+        };
+      });
+    }
+  },
+  commitSpecifyPrompt: async (sessionId, parentNodeId, prompt) => {
+    const state = get();
+    const sessionIndex = findSessionIndex(state.sessions, sessionId);
+    if (sessionIndex === -1) {
+      return;
+    }
+
+    const session = state.sessions[sessionIndex];
+    if (session.isPlaceholder) {
+      return;
+    }
+
+    const snapshot = cloneSessionTree(session);
+    const tempNodeId = `${parentNodeId}::temp-${crypto.randomUUID()}`;
+
+    set((current) => {
+      const sessions = current.sessions.slice();
+      sessions[sessionIndex] = {
+        ...sessions[sessionIndex],
+        root: updateNode(
+          sessions[sessionIndex].root,
+          parentNodeId,
+          (node) => ({
+            ...node,
+            children: [
+              ...node.children.filter((child) => child.variant !== "specify"),
+              {
+                id: tempNodeId,
+                title: "",
+                prompt,
+                variant: "prompt",
+                status: "loading",
+                children: [],
+              },
+              createSpecifyNode(parentNodeId),
+            ],
+          }),
+        ),
+      };
+      return {
+        ...current,
+        sessions,
+        lastError: null,
+      };
+    });
+
+    try {
+      const data = await postJson<{ session: SessionTree }>(
+        `/api/tree/${session.id}/expand`,
+        { mode: "specify", parentNodeId, prompt },
+      );
+      logStorageWarning(data.meta);
+      const updatedSession: SessionTree = {
+        ...data.session,
+        isPlaceholder: false,
+      };
+
+      set((current) => {
+        const sessions = current.sessions.slice();
+        sessions[sessionIndex] = updatedSession;
+        return {
+          ...current,
+          sessions,
+        };
+      });
+    } catch (error) {
+      console.error("Failed to create specify prompt", error);
+      set((current) => {
+        const sessions = current.sessions.slice();
+        sessions[sessionIndex] = {
+          ...snapshot,
+          root: updateNode(snapshot.root, parentNodeId, (node) => ({
+            ...node,
+            status: "error",
+          })),
+        };
+
+        return {
+          ...current,
+          sessions,
+          lastError: extractErrorMessage(
+            error,
+            "Failed to extend branch. Please try again.",
+          ),
+        };
+      });
+    }
   },
 }));
 
-export { MOCK_PLACEHOLDER_NOTE };
+export { EMPTY_STATE_NOTE };

@@ -7,12 +7,9 @@ import {
   SidebarItem,
   SidebarShell,
 } from "@/components/ui/sidebar-shell";
-import {
-  MOCK_PLACEHOLDER_NOTE,
-  type BranchNode,
-  useSessionStore,
-} from "@/lib/state/session-store";
-import { useMemo, useCallback } from "react";
+import { EMPTY_STATE_NOTE, useSessionStore } from "@/lib/state/session-store";
+import type { BranchNode } from "@/lib/types/tree";
+import { useMemo, useCallback, useEffect } from "react";
 
 export default function Home() {
   const sessions = useSessionStore((state) => state.sessions);
@@ -23,23 +20,39 @@ export default function Home() {
   const commitSpecifyPrompt = useSessionStore(
     (state) => state.commitSpecifyPrompt,
   );
+  const hydrate = useSessionStore((state) => state.hydrate);
+  const isHydrating = useSessionStore((state) => state.isHydrating);
+  const lastError = useSessionStore((state) => state.lastError);
+  const clearError = useSessionStore((state) => state.clearError);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
     [sessions, activeSessionId],
   );
 
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
+
   const computeSessionStatus = useCallback(
-    (node: BranchNode): "idle" | "loading" => {
+    (node: BranchNode): "idle" | "loading" | "error" => {
+      if (node.status === "error") {
+        return "error";
+      }
       if (node.status === "loading") {
         return "loading";
       }
+      let childState: "idle" | "loading" | "error" = "idle";
       for (const child of node.children) {
-        if (computeSessionStatus(child) === "loading") {
-          return "loading";
+        const status = computeSessionStatus(child);
+        if (status === "error") {
+          return "error";
+        }
+        if (status === "loading") {
+          childState = "loading";
         }
       }
-      return "idle";
+      return childState;
     },
     [],
   );
@@ -54,15 +67,42 @@ export default function Home() {
           </SidebarActionButton>
         }
       >
-        <div className="rounded-[var(--radius-card)] border border-white/30 bg-white/40 px-3 py-2 text-xs font-medium text-slate-600">
-          {MOCK_PLACEHOLDER_NOTE}
-        </div>
+        {lastError ? (
+          <div className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+            <span className="truncate">{lastError}</span>
+            <button
+              type="button"
+              onClick={() => {
+                clearError();
+                void hydrate();
+              }}
+              className="shrink-0 rounded-full border border-rose-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-600"
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
+
+        {isHydrating && sessions.length === 0 ? (
+          <div className="rounded-[var(--radius-card)] border border-white/20 bg-white/60 px-3 py-2 text-xs font-medium text-slate-500">
+            Loading sessions…
+          </div>
+        ) : null}
+
+        {!isHydrating && sessions.length === 0 ? (
+          <div className="rounded-[var(--radius-card)] border border-white/30 bg-white/40 px-3 py-2 text-xs font-medium text-slate-600">
+            {EMPTY_STATE_NOTE}
+          </div>
+        ) : null}
+
         {sessions.map((session) => {
-          const status =
-            session.root.children.length === 0 && !session.root.prompt
-              ? "Setup"
-              : computeSessionStatus(session.root) === "loading"
-                ? "Refreshing"
+          const statusState = computeSessionStatus(session.root);
+          const status = session.isPlaceholder && !session.root.prompt
+            ? "Setup"
+            : statusState === "loading"
+              ? "Refreshing"
+              : statusState === "error"
+                ? "Error"
                 : "Idle";
 
           return (
@@ -90,7 +130,7 @@ export default function Home() {
               {activeSession?.title ?? "Select a session"}
             </h1>
             <span className="text-xs uppercase tracking-[0.28em] text-slate-400">
-              Phase 2 UI — Mock data only
+              Phase 3 — AI-backed generation
             </span>
           </div>
           <PrimaryButton type="button" onClick={createSession}>
