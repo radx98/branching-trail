@@ -63,7 +63,7 @@ export default function Home() {
         title="Branching Trail"
         action={
           <SidebarActionButton type="button" onClick={createSession}>
-            New
+            +
           </SidebarActionButton>
         }
       >

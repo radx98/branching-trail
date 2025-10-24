@@ -142,8 +142,7 @@ What the tree UI looks like and how it works:
 - When a specify input is submitted, the block permanently becomes a prompt node (prompt text + `Edit` button) and a fresh specify sibling is appended so the parent always retains exactly one specify input.
 
 ### 4.3 Sidebar and canvas styling and scaling
-- 'new' to '+'
-- 'idle?'
+- 
 
 ## Phase 5 - Prompts
 - fix prompts

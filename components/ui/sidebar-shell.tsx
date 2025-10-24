@@ -22,12 +22,12 @@ export function SidebarShell({
       {...props}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-base font-semibold tracking-tight text-[color:var(--color-foreground)]">
+        <span className="text-xl font-semibold tracking-tight text-[color:var(--color-foreground)]">
           {title}
         </span>
         {action}
       </div>
-      <nav className="flex grow flex-col gap-3 overflow-auto">{children}</nav>
+      <nav className="mt-8 flex grow flex-col gap-3 overflow-auto">{children}</nav>
     </aside>
   );
 }
@@ -63,10 +63,20 @@ export function SidebarActionButton({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-[var(--color-accent-foreground)] shadow-[var(--shadow-soft)] transition-[background,transform] duration-150 hover:bg-indigo-500 hover:-translate-y-0.5",
+        "inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-foreground)] shadow-[var(--shadow-soft)] transition-colors duration-150 hover:bg-indigo-500",
         className,
       )}
       {...props}
-    />
+    >
+      <span className="inline-flex">
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className="h-5 w-5 fill-none stroke-current stroke-[2.2] drop-shadow-[0_1px_1px_rgba(0,0,0,0.12)]"
+        >
+          <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    </button>
   );
 }

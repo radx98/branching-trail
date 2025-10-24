@@ -50,20 +50,142 @@ type BranchingCanvasProps = {
 type BuildContext = {
   nodes: Node<BranchNodeData>[];
   edges: Edge[];
-  layerCounts: Record<number, number>;
+  layerOccupancy: Record<number, number[]>;
+  nodeLaneOverrides: Record<string, number>;
 };
 
-const LAYER_X_GAP = 320;
-const LAYER_Y_GAP = 240;
+const LAYER_X_GAP = 600;
+const LAYER_Y_GAP = 280;
+const DEPTH_X_OFFSET = 28;
+const JITTER_X_RANGE = 48;
+const JITTER_Y_RANGE = 60;
+const CHILD_LANE_SPACING = 1.15;
+const MIN_LANE_GAP = 0.9;
 
-const createNodePosition = (depth: number, laneIndex: number) => ({
-  x: depth * LAYER_X_GAP,
-  y: laneIndex * LAYER_Y_GAP,
-});
+const hashNodeId = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return hash >>> 0;
+};
+
+const createNodePosition = (
+  depth: number,
+  lanePosition: number,
+  nodeId: string,
+) => {
+  const hash = hashNodeId(nodeId);
+  const xNoise = ((hash & 0xffff) / 0xffff - 0.5) * JITTER_X_RANGE;
+  const yNoise =
+    (((hash >> 16) & 0xffff) / 0xffff - 0.5) * JITTER_Y_RANGE;
+
+  return {
+    x: depth * LAYER_X_GAP + depth * DEPTH_X_OFFSET + xNoise,
+    y: lanePosition * LAYER_Y_GAP + yNoise,
+  };
+};
+
+const reserveLane = (
+  depth: number,
+  desiredLane: number,
+  ctx: BuildContext,
+): number => {
+  if (!ctx.layerOccupancy[depth]) {
+    ctx.layerOccupancy[depth] = [];
+  }
+  const lanes = ctx.layerOccupancy[depth];
+  const isAvailable = (candidate: number) =>
+    lanes.every((lane) => Math.abs(lane - candidate) >= MIN_LANE_GAP);
+
+  if (isAvailable(desiredLane)) {
+    lanes.push(desiredLane);
+    return desiredLane;
+  }
+
+  let offsetStep = 1;
+  while (offsetStep < 100) {
+    const negative = desiredLane - offsetStep * MIN_LANE_GAP;
+    if (isAvailable(negative)) {
+      lanes.push(negative);
+      return negative;
+    }
+    const positive = desiredLane + offsetStep * MIN_LANE_GAP;
+    if (isAvailable(positive)) {
+      lanes.push(positive);
+      return positive;
+    }
+    offsetStep += 1;
+  }
+
+  lanes.push(desiredLane);
+  return desiredLane;
+};
+
+const registerExistingLane = (
+  depth: number,
+  lane: number,
+  ctx: BuildContext,
+) => {
+  if (!ctx.layerOccupancy[depth]) {
+    ctx.layerOccupancy[depth] = [lane];
+    return lane;
+  }
+  const lanes = ctx.layerOccupancy[depth];
+  if (!lanes.some((existing) => Math.abs(existing - lane) < 1e-6)) {
+    lanes.push(lane);
+  }
+  return lane;
+};
+
+const reserveLaneGroup = (
+  depth: number,
+  desiredLanes: number[],
+  ctx: BuildContext,
+): number[] => {
+  if (desiredLanes.length === 0) {
+    return [];
+  }
+
+  if (!ctx.layerOccupancy[depth]) {
+    ctx.layerOccupancy[depth] = [];
+  }
+
+  const lanes = ctx.layerOccupancy[depth];
+  const isAvailable = (positions: number[]) =>
+    positions.every((position) =>
+      lanes.every((lane) => Math.abs(lane - position) >= MIN_LANE_GAP),
+    );
+
+  if (isAvailable(desiredLanes)) {
+    lanes.push(...desiredLanes);
+    return desiredLanes;
+  }
+
+  let offsetStep = 1;
+  while (offsetStep < 200) {
+    const offset = offsetStep * MIN_LANE_GAP;
+    const negative = desiredLanes.map((lane) => lane - offset);
+    if (isAvailable(negative)) {
+      lanes.push(...negative);
+      return negative;
+    }
+    const positive = desiredLanes.map((lane) => lane + offset);
+    if (isAvailable(positive)) {
+      lanes.push(...positive);
+      return positive;
+    }
+    offsetStep += 1;
+  }
+
+  lanes.push(...desiredLanes);
+  return desiredLanes;
+};
 
 const traverseTree = (
   item: BranchNode,
   depth: number,
+  lanePosition: number,
   sessionId: string,
   ctx: BuildContext,
   parentId: string | null,
@@ -72,13 +194,19 @@ const traverseTree = (
     "onSubmitPrompt" | "onSpecifyPrompt"
   >,
 ) => {
-  const laneIndex = ctx.layerCounts[depth] ?? 0;
-  ctx.layerCounts[depth] = laneIndex + 1;
+  const overrideLane = ctx.nodeLaneOverrides[item.id];
+  const alignedLane =
+    overrideLane !== undefined
+      ? registerExistingLane(depth, overrideLane, ctx)
+      : reserveLane(depth, lanePosition, ctx);
+  if (overrideLane !== undefined) {
+    delete ctx.nodeLaneOverrides[item.id];
+  }
 
   ctx.nodes.push({
     id: item.id,
     type: "branch-node",
-    position: createNodePosition(depth, laneIndex),
+    position: createNodePosition(depth, alignedLane, item.id),
     data: {
       sessionId,
       node: item,
@@ -88,14 +216,39 @@ const traverseTree = (
     },
   });
 
-  item.children.forEach((child) => {
+  const childCount = item.children.length;
+  const desiredChildLanes = item.children.map((_, index) => {
+    const offset =
+      childCount > 0
+        ? (index - (childCount - 1) / 2) * CHILD_LANE_SPACING
+        : 0;
+    return alignedLane + offset;
+  });
+  const resolvedChildLanes = reserveLaneGroup(
+    depth + 1,
+    desiredChildLanes,
+    ctx,
+  );
+
+  item.children.forEach((child, index) => {
+    const childLane = resolvedChildLanes[index] ?? alignedLane;
+    ctx.nodeLaneOverrides[child.id] = childLane;
+
     ctx.edges.push({
       id: `${item.id}=>${child.id}`,
       source: item.id,
       target: child.id,
-      type: "smoothstep",
+      type: "bezier",
     });
-    traverseTree(child, depth + 1, sessionId, ctx, item.id, handlers);
+    traverseTree(
+      child,
+      depth + 1,
+      childLane,
+      sessionId,
+      ctx,
+      item.id,
+      handlers,
+    );
   });
 };
 
@@ -109,10 +262,11 @@ const buildFlowStructure = (
   const ctx: BuildContext = {
     nodes: [],
     edges: [],
-    layerCounts: {},
+    layerOccupancy: {},
+    nodeLaneOverrides: {},
   };
 
-  traverseTree(session.root, 0, session.id, ctx, null, handlers);
+  traverseTree(session.root, 0, 0, session.id, ctx, null, handlers);
 
   return { nodes: ctx.nodes, edges: ctx.edges };
 };
@@ -191,14 +345,14 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
         <Handle
           type="target"
           position={Position.Left}
-          className="!h-3 !w-3 !bg-indigo-400"
+          className="!h-3 !w-3 !bg-[color:var(--color-accent)]"
         />
       ) : null}
       {node.variant !== "specify" ? (
         <Handle
           type="source"
           position={Position.Right}
-          className="!h-3 !w-3 !bg-indigo-400"
+          className="!h-3 !w-3 !bg-[color:var(--color-accent)]"
         />
       ) : null}
 
@@ -208,7 +362,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 {showTitle ? (
-                  <h3 className="text-lg font-semibold tracking-tight text-slate-900">
+                  <h3 className="text-lg font-semibold tracking-tight text-[color:var(--color-foreground-strong)]">
                     {node.title}
                   </h3>
                 ) : null}
@@ -216,7 +370,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
               {!isEditing ? (
                 <div className="flex items-center gap-3">
                   {isLoading ? (
-                    <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                    <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--color-foreground-soft)]">
                       Expanding…
                     </span>
                   ) : null}
@@ -228,7 +382,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                       setIsEditing(true);
                       setDraftPrompt(node.prompt);
                     }}
-                    className="text-sm font-medium text-indigo-500 hover:text-indigo-600 disabled:opacity-50"
+                    className="text-sm font-medium text-[color:var(--color-accent)] hover:opacity-80 disabled:opacity-50"
                   >
                     {hasPrompt ? "Edit" : "Add prompt"}
                   </button>
@@ -246,11 +400,11 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                   value={draftPrompt}
                   onChange={(event) => setDraftPrompt(event.target.value)}
                   placeholder="Add a prompt to shape this branch..."
-                  className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
+                  className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
                 />
                 <div className="flex items-center justify-end gap-3">
                   {isLoading && (
-                    <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                    <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--color-foreground-soft)]">
                       Refreshing…
                     </span>
                   )}
@@ -259,18 +413,18 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
               </form>
             ) : hasPrompt ? (
               <>
-                <p className="text-sm leading-relaxed text-slate-600">
+                <p className="text-sm leading-relaxed text-[color:var(--color-foreground-muted)]">
                   {node.prompt}
                 </p>
                 {isLoading ? (
-                  <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                  <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--color-foreground-soft)]">
                     Refreshing…
                   </span>
                 ) : null}
               </>
             ) : null}
             {!isEditing && !hasPrompt && isLoading ? (
-              <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+              <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--color-foreground-soft)]">
                 Expanding…
               </span>
             ) : null}
@@ -287,7 +441,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
               value={draftPrompt}
               onChange={(event) => setDraftPrompt(event.target.value)}
               placeholder="Specify"
-              className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
+              className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
             />
             <div className="flex items-center justify-end">
               <PrimaryButton type="submit">Send</PrimaryButton>
@@ -305,7 +459,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   {node.title ? (
-                    <h3 className="text-lg font-semibold tracking-tight text-slate-900">
+                    <h3 className="text-lg font-semibold tracking-tight text-[color:var(--color-foreground-strong)]">
                       {node.title}
                     </h3>
                   ) : null}
@@ -316,7 +470,7 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                 value={draftPrompt}
                 onChange={(event) => setDraftPrompt(event.target.value)}
                 placeholder="Describe what you want to explore..."
-                className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
+                className="min-h-[96px] rounded-[var(--radius-card)] border border-[color:var(--color-border-soft)] bg-[color:var(--color-surface)] px-3 py-2 text-sm text-[color:var(--color-foreground-muted)] shadow-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:ring-opacity-40"
               />
             </form>
           ) : (
@@ -324,14 +478,14 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   {node.title ? (
-                    <h3 className="text-lg font-semibold tracking-tight text-slate-900">
+                    <h3 className="text-lg font-semibold tracking-tight text-[color:var(--color-foreground-strong)]">
                       {node.title}
                     </h3>
                   ) : null}
                 </div>
                 <div className="flex items-center gap-3">
                   {isLoading && (
-                    <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                    <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[color:var(--color-foreground-soft)]">
                       Refreshing…
                     </span>
                   )}
@@ -341,13 +495,13 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                       event.stopPropagation();
                       setIsEditing(true);
                     }}
-                    className="text-sm font-medium text-indigo-500 hover:text-indigo-600"
+                    className="text-sm font-medium text-[color:var(--color-accent)] hover:opacity-80"
                   >
                     Edit
                   </button>
                 </div>
               </div>
-              <p className="text-sm leading-relaxed text-slate-600">
+              <p className="text-sm leading-relaxed text-[color:var(--color-foreground-muted)]">
                 {node.prompt}
               </p>
             </>
@@ -410,7 +564,7 @@ export function BranchingCanvas({
 
   if (!session) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-slate-500">
+      <div className="flex h-full items-center justify-center text-sm text-[color:var(--color-foreground-soft)]">
         Select a session to view its tree.
       </div>
     );
@@ -428,15 +582,15 @@ export function BranchingCanvas({
           nodeTypes={nodeTypes}
           onNodeClick={handleNodeClick}
           defaultEdgeOptions={{
-            style: { stroke: "rgba(99,102,241,0.35)", strokeWidth: 2 },
+            style: { stroke: "rgba(96,96,96,0.45)", strokeWidth: 2 },
           }}
           connectionLineStyle={{
-            stroke: "rgba(99,102,241,0.55)",
+            stroke: "rgba(120,120,120,0.55)",
             strokeWidth: 2,
           }}
           panOnScroll
         >
-          <Background gap={24} color="rgba(15,23,42,0.12)" />
+          <Background gap={24} color="rgba(140,140,140,0.12)" />
         </ReactFlow>
       </div>
     </ReactFlowProvider>
