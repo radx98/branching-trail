@@ -1,19 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f7fb;
-  --foreground: #101835;
+  --background: #f5f5f5;
+  --foreground: #151515;
+  --foreground-muted: #5b5b5b;
+  --foreground-soft: #8b8b8b;
   --surface: #ffffff;
-  --sidebar-surface: rgba(255, 255, 255, 0.78);
-  --accent: #5755ff;
-  --accent-foreground: #ffffff;
-  --border-soft: rgba(26, 35, 58, 0.12);
-  --shadow-soft: 0 18px 48px rgba(15, 23, 42, 0.14);
+  --sidebar-surface: rgba(255, 255, 255, 0.86);
+  --accent: #2b2b2b;
+  --accent-foreground: #f5f5f5;
+  --border-soft: rgba(0, 0, 0, 0.12);
+  --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.08);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-foreground-strong: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-foreground-soft: var(--foreground-soft);
   --color-surface: var(--surface);
   --color-sidebar: var(--sidebar-surface);
   --color-accent: var(--accent);
@@ -23,20 +28,22 @@
   --radius-block: 22px;
   --radius-card: 18px;
   --radius-button: 999px;
-  --font-sans: var(--font-geist-sans, "Inter, system-ui, sans-serif");
-  --font-mono: var(--font-geist-mono, "Menlo, ui-monospace, SFMono-Regular");
+  --font-sans: var(--font-geist-sans, Inter), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono, Menlo), ui-monospace, SFMono-Regular;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0f172a;
-    --foreground: #e2e8f0;
-    --surface: rgba(15, 23, 42, 0.92);
-    --sidebar-surface: rgba(15, 23, 42, 0.82);
-    --accent: #818cf8;
-    --accent-foreground: #0b1120;
-    --border-soft: rgba(148, 163, 184, 0.22);
-    --shadow-soft: 0 22px 56px rgba(2, 6, 23, 0.44);
+    --background: #0d0d0f;
+    --foreground: #f4f4f4;
+    --foreground-muted: #c3c3c3;
+    --foreground-soft: #9b9b9b;
+    --surface: rgba(16, 16, 18, 0.94);
+    --sidebar-surface: rgba(21, 21, 23, 0.88);
+    --accent: #f4f4f4;
+    --accent-foreground: #0d0d0f;
+    --border-soft: rgba(255, 255, 255, 0.16);
+    --shadow-soft: 0 22px 56px rgba(0, 0, 0, 0.65);
   }
 }
 
@@ -48,4 +55,12 @@ body {
 body {
   font-family: var(--font-sans);
   @apply bg-[color:var(--color-background)] text-[color:var(--color-foreground)] antialiased;
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-family: var(--font-sans);
 }
