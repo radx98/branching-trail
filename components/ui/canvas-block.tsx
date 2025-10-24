@@ -14,7 +14,7 @@ export function CanvasBlock({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-block)] border border-[color:var(--color-border-soft)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-soft)] transition-colors duration-150",
+        "relative rounded-[var(--radius-block)] border border-[color:var(--color-border-soft)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-soft)] transition-colors duration-150",
         className,
       )}
       {...props}
