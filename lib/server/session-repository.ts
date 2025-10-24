@@ -18,6 +18,13 @@ export type SessionRow = {
 
 const isDevEnvironment = process.env.NODE_ENV !== "production";
 let memoryFallbackEnabled = false;
+let diagnostics: {
+  backend: "supabase" | "memory";
+  lastError: string | null;
+} = {
+  backend: "supabase",
+  lastError: null,
+};
 
 const shouldUseMemoryStore = (supabase: SupabaseClient | null) =>
   memoryFallbackEnabled || !supabase;
@@ -35,8 +42,28 @@ const enableMemoryFallback = (reason: unknown) => {
   }
 
   memoryFallbackEnabled = true;
+  diagnostics = {
+    backend: "memory",
+    lastError:
+      reason instanceof Error
+        ? reason.message
+        : typeof reason === "string"
+          ? reason
+          : JSON.stringify(reason),
+  };
   return true;
 };
+
+const markSupabaseSuccess = () => {
+  if (!memoryFallbackEnabled) {
+    diagnostics = {
+      backend: "supabase",
+      lastError: null,
+    };
+  }
+};
+
+export const getSessionRepositoryDiagnostics = () => diagnostics;
 
 export async function listSessionsForUser(
   supabase: SupabaseClient | null,
@@ -60,6 +87,7 @@ export async function listSessionsForUser(
     throw new Error(`Failed to load sessions: ${error?.message ?? "Unknown"}`);
   }
 
+  markSupabaseSuccess();
   return data as SessionRow[];
 }
 
@@ -95,6 +123,7 @@ export async function insertSession(
     throw new Error(`Failed to insert session: ${error?.message ?? "Unknown"}`);
   }
 
+  markSupabaseSuccess();
   return data as SessionRow;
 }
 
@@ -124,6 +153,7 @@ export async function fetchSession(
     );
   }
 
+  markSupabaseSuccess();
   return data as SessionRow;
 }
 
@@ -170,6 +200,7 @@ export async function updateSessionTree(
     throw new Error(`Failed to update session: ${error?.message ?? "Unknown"}`);
   }
 
+  markSupabaseSuccess();
   return data as SessionRow;
 }
 

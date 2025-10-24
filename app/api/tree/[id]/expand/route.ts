@@ -8,6 +8,7 @@ import {
   generateSessionTitle,
 } from "@/lib/server/prompt-generators";
 import {
+  getSessionRepositoryDiagnostics,
   fetchSession,
   mapRowToSessionTree,
   updateSessionTree,
@@ -132,9 +133,17 @@ export async function POST(
       tokenUsage: newUsage,
     });
 
-    return NextResponse.json({
-      session: mapRowToSessionTree(updatedRow),
-    });
+    return NextResponse.json(
+      {
+        session: mapRowToSessionTree(updatedRow),
+        meta: getSessionRepositoryDiagnostics(),
+      },
+      {
+        headers: {
+          "x-session-storage": getSessionRepositoryDiagnostics().backend,
+        },
+      },
+    );
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(

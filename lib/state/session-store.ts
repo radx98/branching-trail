@@ -121,11 +121,30 @@ async function requestJson<T>(
   return (data ?? {}) as T;
 }
 
+type ApiResponse<T> = T & {
+  meta?: {
+    backend?: "supabase" | "memory";
+    lastError?: string | null;
+  };
+};
+
+const logStorageWarning = (meta?: ApiResponse<unknown>["meta"]) => {
+  if (!meta) {
+    return;
+  }
+  if (meta.backend === "memory") {
+    console.warn(
+      "[sessions] Using in-memory session store. Supabase writes are disabled",
+      meta.lastError ? `(${meta.lastError})` : "",
+    );
+  }
+};
+
 const getJson = <T,>(url: string) =>
-  requestJson<T>(url, { method: "GET" });
+  requestJson<ApiResponse<T>>(url, { method: "GET" });
 
 const postJson = <T,>(url: string, body: unknown) =>
-  requestJson<T>(url, {
+  requestJson<ApiResponse<T>>(url, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -164,6 +183,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     try {
       const data = await getJson<{ sessions: SessionTree[] }>("/api/sessions");
+      logStorageWarning(data.meta);
       const sessions = (data.sessions ?? []).map((session) => ({
         ...session,
         isPlaceholder: false,
@@ -232,6 +252,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           "/api/sessions",
           { prompt },
         );
+        logStorageWarning(data.meta);
         const createdSession: SessionTree = {
           ...data.session,
           isPlaceholder: false,
@@ -251,6 +272,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           `/api/tree/${session.id}/expand`,
           { mode: "submit", nodeId, prompt },
         );
+        logStorageWarning(data.meta);
         const updatedSession: SessionTree = {
           ...data.session,
           isPlaceholder: false,
@@ -340,6 +362,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         `/api/tree/${session.id}/expand`,
         { mode: "specify", parentNodeId, prompt },
       );
+      logStorageWarning(data.meta);
       const updatedSession: SessionTree = {
         ...data.session,
         isPlaceholder: false,

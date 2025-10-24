@@ -8,6 +8,7 @@ import {
   generateSessionTitle,
 } from "@/lib/server/prompt-generators";
 import {
+  getSessionRepositoryDiagnostics,
   insertSession,
   listSessionsForUser,
   mapRowToSessionTree,
@@ -20,9 +21,17 @@ export async function GET() {
   try {
     const { supabase, user } = await requireAuthenticatedClient();
     const rows = await listSessionsForUser(supabase, user.id);
-    return NextResponse.json({
-      sessions: rows.map((row) => mapRowToSessionTree(row)),
-    });
+    return NextResponse.json(
+      {
+        sessions: rows.map((row) => mapRowToSessionTree(row)),
+        meta: getSessionRepositoryDiagnostics(),
+      },
+      {
+        headers: {
+          "x-session-storage": getSessionRepositoryDiagnostics().backend,
+        },
+      },
+    );
   } catch (error) {
     if (error instanceof ApiError) {
       return NextResponse.json(
@@ -77,8 +86,14 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         session: mapRowToSessionTree(row),
+        meta: getSessionRepositoryDiagnostics(),
       },
-      { status: 201 },
+      {
+        status: 201,
+        headers: {
+          "x-session-storage": getSessionRepositoryDiagnostics().backend,
+        },
+      },
     );
   } catch (error) {
     if (error instanceof ZodError) {
