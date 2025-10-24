@@ -131,12 +131,15 @@ Sidebar entries reuse the same data (id, title, status) so the Zustand store can
 
 ### 4.2 Tree UI logic (what and when to show)
 What the tree UI looks like and how it works:
-- All blocks are one line and a button on the right unless there is a custom or initial prompt. No 'prompt' or 'option' headers
-- The initial prompt block contains input field only, it takes its entire space. within it there's a 'send' button in the top right corner. After sending input becomes plain text, send button replaced with 'edit' button.
-- Five child elements are created. Four are 'options', they contain their title and 'add prompt' button only. Fifth is 'specify' which consisits of an input field with 'specify' placeholder and 'send' button and shares the look with initial prompt block.
-- If user clicks one of the options, five new blocks (4 options + 1 specify) are generated the same way as on the previous step.
-- If user clicks 'add prompt' button on one of the options an input field unfer the option name/title is created with a 'send' button. After sending that input field is replaced with plain text the same way as in initial prompt block at the beginning, 'send' button is removed and 'add prompt' button is replaced with 'edit' for editing the prompt. Five new block are created as usual.
-- If user clicks 'specify' and adds a custom prompt to it, input field is replaced with plain text the same way as in initial prompt block at the beginning, 'send' button is removed, 'edit' added.
+- Each block renders one of four states and never shows redundant headers like “prompt” or “option”:
+  - Option without prompt: show the generated option title and an `Add prompt` button on the right.
+  - Option with prompt: show the option title, the saved prompt body beneath it (wrapping as needed), and an `Edit` button in the same position the `Add prompt` button occupied.
+  - Specify input: show the empty-title specify node as an input field with placeholder “Specify” (or equivalent) and a `Send` button; this is always the fifth child generated alongside the four options.
+  - Prompt node (initial prompt or specify after submission): show the prompt body text and an `Edit` button.
+- Initial prompt block starts as an input field with a `Send` button in its top-right corner; once submitted it transitions to the “prompt node” state above.
+- Every time an option is expanded, which happens on clicking the block (anywhere but the 'add prompt' button), five children appear: four option nodes (all in the “option without prompt” state) plus the specify input node described above.
+- Submitting an `Add prompt` on an option creates an inline input beneath the option title with a `Send` button; once saved the input disappears, the prompt text is rendered, and the `Add prompt` button is replaced in-place by an `Edit` button. Four new child options plus a new specify node are generated immediately.
+- When a specify input is submitted, the block permanently becomes a prompt node (prompt text + `Edit` button) and a fresh specify sibling is appended so the parent always retains exactly one specify input.
 
 ### 4.3 Sidebar and canvas styling and scaling
 - 'new' to '+'

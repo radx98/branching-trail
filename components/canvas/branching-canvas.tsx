@@ -308,6 +308,7 @@ export function BranchingCanvas({
       <div className="h-full w-full">
         <ReactFlow
           className="h-full w-full"
+          proOptions={{ hideAttribution: true }}
           fitView
           nodes={elements.nodes}
           edges={elements.edges}

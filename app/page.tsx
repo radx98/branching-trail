@@ -1,7 +1,6 @@
 'use client';
 
 import { BranchingCanvas } from "@/components/canvas/branching-canvas";
-import { PrimaryButton } from "@/components/ui/primary-button";
 import {
   SidebarActionButton,
   SidebarItem,
@@ -121,23 +120,6 @@ export default function Home() {
       </SidebarShell>
 
       <main className="relative flex flex-1 flex-col overflow-hidden">
-        <header className="flex flex-wrap items-center justify-between gap-6 border-b border-white/10 px-10 py-8">
-          <div className="flex flex-col gap-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Canvas playground
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight text-[color:var(--color-foreground)]">
-              {activeSession?.title ?? "Select a session"}
-            </h1>
-            <span className="text-xs uppercase tracking-[0.28em] text-slate-400">
-              Phase 3 — AI-backed generation
-            </span>
-          </div>
-          <PrimaryButton type="button" onClick={createSession}>
-            Start fresh session
-          </PrimaryButton>
-        </header>
-
         <section className="flex-1 overflow-hidden">
           <BranchingCanvas
             session={activeSession}
