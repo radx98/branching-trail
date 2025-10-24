@@ -13,7 +13,7 @@ import {
   Background,
   ReactFlowProvider,
 } from "reactflow";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import "reactflow/dist/style.css";
 
 type BranchNodeData = {
@@ -44,6 +44,7 @@ type BranchingCanvasProps = {
     parentNodeId: string,
     prompt: string,
   ) => Promise<void>;
+  onExpandOption: (sessionId: string, nodeId: string) => Promise<void>;
 };
 
 type BuildContext = {
@@ -181,7 +182,11 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
   const showTitle = isOption && node.title;
 
   return (
-    <CanvasBlock className="w-72 min-w-[18rem]">
+    <CanvasBlock
+      className={`w-72 min-w-[18rem]${
+        isOption && !isEditing ? " cursor-pointer" : ""
+      }`}
+    >
       {parentId ? (
         <Handle
           type="target"
@@ -209,22 +214,32 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                 ) : null}
               </div>
               {!isEditing ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditing(true);
-                    setDraftPrompt(node.prompt);
-                  }}
-                  className="text-sm font-medium text-indigo-500 hover:text-indigo-600"
-                >
-                  {hasPrompt ? "Edit" : "Add prompt"}
-                </button>
+                <div className="flex items-center gap-3">
+                  {isLoading ? (
+                    <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                      Expanding…
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setIsEditing(true);
+                      setDraftPrompt(node.prompt);
+                    }}
+                    className="text-sm font-medium text-indigo-500 hover:text-indigo-600 disabled:opacity-50"
+                  >
+                    {hasPrompt ? "Edit" : "Add prompt"}
+                  </button>
+                </div>
               ) : null}
             </div>
 
             {isEditing ? (
               <form
                 onSubmit={handleSubmit}
+                onClick={(event) => event.stopPropagation()}
                 className="flex flex-col gap-2"
               >
                 <textarea
@@ -254,12 +269,18 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                 ) : null}
               </>
             ) : null}
+            {!isEditing && !hasPrompt && isLoading ? (
+              <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                Expanding…
+              </span>
+            ) : null}
           </>
         ) : null}
 
         {isSpecify ? (
           <form
             onSubmit={handleSpecify}
+            onClick={(event) => event.stopPropagation()}
             className="flex flex-col gap-2"
           >
             <textarea
@@ -276,7 +297,11 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
 
         {!isSpecify && !isOption ? (
           isEditing ? (
-            <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+            <form
+              onSubmit={handleSubmit}
+              onClick={(event) => event.stopPropagation()}
+              className="flex flex-col gap-2"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   {node.title ? (
@@ -312,7 +337,10 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
                   )}
                   <button
                     type="button"
-                    onClick={() => setIsEditing(true)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setIsEditing(true);
+                    }}
                     className="text-sm font-medium text-indigo-500 hover:text-indigo-600"
                   >
                     Edit
@@ -333,7 +361,10 @@ const BranchNodeRenderer = ({ data }: NodeProps<BranchNodeData>) => {
             </span>
             <button
               type="button"
-              onClick={() => setIsEditing(true)}
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsEditing(true);
+              }}
               className="shrink-0 rounded-full border border-rose-300 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-600 hover:bg-rose-100/60"
             >
               Retry
@@ -351,13 +382,31 @@ export function BranchingCanvas({
   session,
   onSubmitPrompt,
   onSpecifyPrompt,
+  onExpandOption,
 }: BranchingCanvasProps) {
   const elements = useMemo(() => {
     if (!session) {
       return { nodes: [], edges: [] };
     }
-    return buildFlowStructure(session, { onSubmitPrompt, onSpecifyPrompt });
+    return buildFlowStructure(session, {
+      onSubmitPrompt,
+      onSpecifyPrompt,
+    });
   }, [session, onSubmitPrompt, onSpecifyPrompt]);
+
+  const handleNodeClick = useCallback(
+    (_event: unknown, nodeInstance: Node<BranchNodeData>) => {
+      const data = nodeInstance.data;
+      if (!data || data.node.variant !== "option") {
+        return;
+      }
+      if (data.node.status === "loading") {
+        return;
+      }
+      void onExpandOption(data.sessionId, data.node.id);
+    },
+    [onExpandOption],
+  );
 
   if (!session) {
     return (
@@ -377,6 +426,7 @@ export function BranchingCanvas({
           nodes={elements.nodes}
           edges={elements.edges}
           nodeTypes={nodeTypes}
+          onNodeClick={handleNodeClick}
           defaultEdgeOptions={{
             style: { stroke: "rgba(99,102,241,0.35)", strokeWidth: 2 },
           }}

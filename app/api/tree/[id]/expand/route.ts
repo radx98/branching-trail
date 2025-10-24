@@ -78,7 +78,7 @@ export async function POST(
         updatedTitle = title;
         match.node.title = title;
       }
-    } else {
+    } else if (payload.mode === "specify") {
       const match = findNodeWithTrail(tree, payload.parentNodeId);
       if (!match) {
         throw new ApiError(404, "Parent node not found.");
@@ -121,6 +121,50 @@ export async function POST(
         newNode,
         createSpecifyNode(match.node.id),
       ];
+    } else {
+      const match = findNodeWithTrail(tree, payload.nodeId);
+      if (!match) {
+        throw new ApiError(404, "Target node not found.");
+      }
+      if (match.node.variant !== "option") {
+        throw new ApiError(400, "Only option nodes can be expanded.");
+      }
+
+      const optionPrompt = match.node.prompt.trim()
+        || match.node.title.trim();
+      if (!optionPrompt) {
+        throw new ApiError(400, "Option is missing prompt context.");
+      }
+
+      const breadcrumbTitles = match.breadcrumb
+        .filter((node) => node.variant !== "specify")
+        .map((node) =>
+          node.variant === "prompt" && node.prompt
+            ? node.prompt
+            : node.title,
+        )
+        .filter((title): title is string => Boolean(title));
+      if (match.node.title) {
+        breadcrumbTitles.push(match.node.title);
+      }
+
+      const { options, tokens } = await generateBranchOptions({
+        prompt: optionPrompt,
+        nodeTitle: match.node.title,
+        breadcrumb: breadcrumbTitles,
+      });
+
+      tokensConsumed += tokens;
+
+      match.node.status = "idle";
+      match.node.children = options.map((option, index) =>
+        createOptionNode({
+          parentId: match.node.id,
+          index,
+          title: option,
+        }),
+      );
+      match.node.children.push(createSpecifyNode(match.node.id));
     }
 
     walkTree(tree, (node) => ensureSpecifyChild(node, createSpecifyNode));

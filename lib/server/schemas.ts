@@ -11,6 +11,10 @@ export const expandNodeBodySchema = z.discriminatedUnion("mode", [
     prompt: z.string().min(1, "Prompt is required.").trim(),
   }),
   z.object({
+    mode: z.literal("option"),
+    nodeId: z.string().min(1, "Node ID is required."),
+  }),
+  z.object({
     mode: z.literal("specify"),
     parentNodeId: z.string().min(1, "Parent node ID is required."),
     prompt: z.string().min(1, "Prompt is required.").trim(),

@@ -23,6 +23,7 @@ type SessionState = {
     parentNodeId: string,
     prompt: string,
   ) => Promise<void>;
+  expandOption: (sessionId: string, nodeId: string) => Promise<void>;
   hydrate: () => Promise<void>;
   clearError: () => void;
 };
@@ -394,6 +395,79 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           lastError: extractErrorMessage(
             error,
             "Failed to extend branch. Please try again.",
+          ),
+        };
+      });
+    }
+  },
+  expandOption: async (sessionId, nodeId) => {
+    const state = get();
+    const sessionIndex = findSessionIndex(state.sessions, sessionId);
+    if (sessionIndex === -1) {
+      return;
+    }
+
+    const session = state.sessions[sessionIndex];
+    if (session.isPlaceholder) {
+      return;
+    }
+
+    const snapshot = cloneSessionTree(session);
+
+    set((current) => {
+      const sessions = current.sessions.slice();
+      sessions[sessionIndex] = {
+        ...sessions[sessionIndex],
+        root: updateNode(sessions[sessionIndex].root, nodeId, (node) => ({
+          ...node,
+          status: "loading",
+          children: [],
+        })),
+      };
+      return {
+        ...current,
+        sessions,
+        lastError: null,
+      };
+    });
+
+    try {
+      const data = await postJson<{ session: SessionTree }>(
+        `/api/tree/${session.id}/expand`,
+        { mode: "option", nodeId },
+      );
+      logStorageWarning(data.meta);
+      const updatedSession: SessionTree = {
+        ...data.session,
+        isPlaceholder: false,
+      };
+
+      set((current) => {
+        const sessions = current.sessions.slice();
+        sessions[sessionIndex] = updatedSession;
+        return {
+          ...current,
+          sessions,
+        };
+      });
+    } catch (error) {
+      console.error("Failed to expand option", error);
+      set((current) => {
+        const sessions = current.sessions.slice();
+        sessions[sessionIndex] = {
+          ...snapshot,
+          root: updateNode(snapshot.root, nodeId, (node) => ({
+            ...node,
+            status: "error",
+          })),
+        };
+
+        return {
+          ...current,
+          sessions,
+          lastError: extractErrorMessage(
+            error,
+            "Failed to expand option. Please try again.",
           ),
         };
       });

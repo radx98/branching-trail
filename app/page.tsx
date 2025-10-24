@@ -19,6 +19,7 @@ export default function Home() {
   const commitSpecifyPrompt = useSessionStore(
     (state) => state.commitSpecifyPrompt,
   );
+  const expandOption = useSessionStore((state) => state.expandOption);
   const hydrate = useSessionStore((state) => state.hydrate);
   const isHydrating = useSessionStore((state) => state.isHydrating);
   const lastError = useSessionStore((state) => state.lastError);
@@ -125,6 +126,7 @@ export default function Home() {
             session={activeSession}
             onSubmitPrompt={submitPrompt}
             onSpecifyPrompt={commitSpecifyPrompt}
+            onExpandOption={expandOption}
           />
         </section>
       </main>
