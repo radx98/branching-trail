@@ -64,3 +64,24 @@ textarea,
 select {
   font-family: var(--font-sans);
 }
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.loading-shimmer {
+  background-image: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0.55) 20%,
+    rgba(255, 255, 255, 0.15) 40%,
+    rgba(255, 255, 255, 0.55) 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+  opacity: 0.6;
+}
