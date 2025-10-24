@@ -126,5 +126,5 @@ Sidebar entries reuse the same data (id, title, status) so the Zustand store can
 
 ## Phase 4 — Polish & Hardening
 - Refine error handling: rollback UI state on failures, surface retry controls, and gate inputs while requests are in flight. Unauthenticated local usage is fine in early development, but production flows must enforce Supabase auth.
-- Add token usage tracking, session title generation, and empty states for new users.
+- Add session title generation, and empty states for new users.
 - Tighten security (auth guards on API routes, per-user ownership checks) and clean up UI details (responsive tweaks, loading animations, specify button lifecycle).
