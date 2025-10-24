@@ -577,6 +577,7 @@ export function BranchingCanvas({
           className="h-full w-full"
           proOptions={{ hideAttribution: true }}
           fitView
+          minZoom={0.1}
           nodes={elements.nodes}
           edges={elements.edges}
           nodeTypes={nodeTypes}
