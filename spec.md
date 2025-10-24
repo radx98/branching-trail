@@ -124,7 +124,27 @@ Sidebar entries reuse the same data (id, title, status) so the Zustand store can
 - Implement Next.js API routes for session creation and node expansion, including payload validation with Zod.
 - Integrate OpenAI calls with streamed responses forwarded to the client while persisting debounced partial updates in Supabase so the tree stays near real time.
 
-## Phase 4 — Polish & Hardening
-- Refine error handling: rollback UI state on failures, surface retry controls, and gate inputs while requests are in flight. Unauthenticated local usage is fine in early development, but production flows must enforce Supabase auth.
-- Add session title generation, and empty states for new users.
-- Tighten security (auth guards on API routes, per-user ownership checks) and clean up UI details (responsive tweaks, loading animations, specify button lifecycle).
+## Phase 4 — UI
+### 4.1 Removing some suff
+- Remove the header (entire block) above the canvas; session title and new session controls live in the sidebar already.
+- Remove React Flow label at the bottom of the canvas.
+
+### 4.2 Tree UI logic (what and when to show)
+What the tree UI looks like and how it works:
+- All blocks are one line and a button on the right unless there is a custom or initial prompt. No 'prompt' or 'option' headers
+- The initial prompt block contains input field only, it takes its entire space. within it there's a 'send' button in the top right corner. After sending input becomes plain text, send button replaced with 'edit' button.
+- Five child elements are created. Four are 'options', they contain their title and 'add prompt' button only. Fifth is 'specify' which consisits of an input field with 'specify' placeholder and 'send' button and shares the look with initial prompt block.
+- If user clicks one of the options, five new blocks (4 options + 1 specify) are generated the same way as on the previous step.
+- If user clicks 'add prompt' button on one of the options an input field unfer the option name/title is created with a 'send' button. After sending that input field is replaced with plain text the same way as in initial prompt block at the beginning, 'send' button is removed and 'add prompt' button is replaced with 'edit' for editing the prompt. Five new block are created as usual.
+- If user clicks 'specify' and adds a custom prompt to it, input field is replaced with plain text the same way as in initial prompt block at the beginning, 'send' button is removed, 'edit' added.
+
+### 4.3 Sidebar and canvas styling and scaling
+- 'new' to '+'
+- 'idle?'
+
+## Phase 5 - Prompts
+- fix prompts
+
+## Phase 6 - Deployment
+- ...
+- Disable Dev Tools (button at the bottom left corner)
