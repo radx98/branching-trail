@@ -61,7 +61,7 @@ type BuildContext = {
 };
 
 const LAYER_X_GAP = 600;
-const LAYER_Y_GAP = 280;
+const LAYER_Y_GAP = 180;
 const DEPTH_X_OFFSET = 28;
 const JITTER_X_RANGE = 48;
 const JITTER_Y_RANGE = 60;

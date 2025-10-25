@@ -1,6 +1,6 @@
 import { getOpenAIClient } from "@/lib/openai";
 
-const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini"; // gpt-4o-mini / gpt-5
 
 type GenerationUsage = {
   tokens: number;
@@ -19,14 +19,14 @@ export async function generateSessionTitle(
       {
         role: "system",
         content:
-          "You are a naming assistant that crafts concise, intriguing brainstorming session titles. Respond with a single title no longer than six words.",
+          "You are a naming assistant that crafts concise brainstorming session titles. Respond with a single title no longer than four words.",
       },
       {
         role: "user",
         content: [
           `Prompt or theme: ${prompt}`,
           "",
-          "Return only the title text. Do not include quotes or explanations.",
+          "Return only the title text. Do not include quotation marks or explanations.",
         ].join("\n"),
       },
     ],
@@ -61,9 +61,9 @@ export async function generateBranchOptions({
       {
         role: "system",
         content: [
-          "You help product teams explore creative directions through branching prompts.",
+          "You help exploring available options and brainstorming by generating 4 options in response to user input on each step. As the input you will receive either the initial prompt only or previously chosen option with history of options chosen before it, i.e. the entitre path from the initial prompt. The options you offer should be as broad as possible. Think of a cathegory defined by the input and then offer 4 subcathegories that in combinations cover the whole semantic range of it.",
           "Given the user's latest prompt (and optional context), respond with a JSON object: {\"options\": [string, string, string, string]}",
-          "Each string should be an evocative, specific angle or framing. Keep them under 12 words. Do not add numbering or commentary.",
+          "Each string should be under 8 words. Do not add numbering, quotation marks or commentary.",
         ].join(" "),
       },
       {
