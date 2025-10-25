@@ -74,11 +74,12 @@ export async function listSessionsForUser(
     return memoryListSessions(userId);
   }
 
-  if (!supabase) {
+  const client = supabase;
+  if (!client) {
     throw new Error("Supabase client is not available.");
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from("sessions")
     .select("id, user_id, title, tree_json, token_usage")
     .eq("user_id", userId)
@@ -109,11 +110,12 @@ export async function insertSession(
     return memoryInsertSession(userId, payload);
   }
 
-  if (!supabase) {
+  const client = supabase;
+  if (!client) {
     throw new Error("Supabase client is not available.");
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from("sessions")
     .insert({
       user_id: userId,
@@ -145,11 +147,12 @@ export async function fetchSession(
     return memoryFetchSession(userId, sessionId);
   }
 
-  if (!supabase) {
+  const client = supabase;
+  if (!client) {
     throw new Error("Supabase client is not available.");
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from("sessions")
     .select("id, user_id, title, tree_json, token_usage")
     .eq("id", sessionId)
@@ -184,7 +187,8 @@ export async function updateSessionTree(
     return memoryUpdateSession(userId, sessionId, payload);
   }
 
-  if (!supabase) {
+  const client = supabase;
+  if (!client) {
     throw new Error("Supabase client is not available.");
   }
 
@@ -201,7 +205,7 @@ export async function updateSessionTree(
     updatePayload.title = payload.title;
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from("sessions")
     .update(updatePayload)
     .eq("id", sessionId)
@@ -231,11 +235,12 @@ export async function deleteSession(
     return;
   }
 
-  if (!supabase) {
+  const client = supabase;
+  if (!client) {
     throw new Error("Supabase client is not available.");
   }
 
-  const { error } = await supabase
+  const { error } = await client
     .from("sessions")
     .delete()
     .eq("id", sessionId)
