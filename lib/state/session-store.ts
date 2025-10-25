@@ -13,6 +13,7 @@ type SessionState = {
   lastError: string | null;
   createSession: () => void;
   selectSession: (sessionId: string) => void;
+  deleteSession: (sessionId: string) => Promise<void>;
   submitPrompt: (
     sessionId: string,
     nodeId: string,
@@ -150,6 +151,9 @@ const postJson = <T,>(url: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+const deleteJson = <T,>(url: string) =>
+  requestJson<ApiResponse<T>>(url, { method: "DELETE" });
+
 export const useSessionStore = create<SessionState>((set, get) => ({
   sessions: [],
   activeSessionId: null,
@@ -170,6 +174,54 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       ...state,
       activeSessionId: sessionId,
     })),
+  deleteSession: async (sessionId) => {
+    const state = get();
+    const sessionIndex = findSessionIndex(state.sessions, sessionId);
+    if (sessionIndex === -1) {
+      return;
+    }
+
+    const snapshotSessions = state.sessions.map((session) =>
+      cloneSessionTree(session),
+    );
+    const snapshotActive = state.activeSessionId;
+    const targetSession = state.sessions[sessionIndex];
+
+    set((current) => {
+      const sessions = current.sessions.filter((session) =>
+        session.id !== sessionId,
+      );
+      const activeSessionId = current.activeSessionId === sessionId
+        ? sessions[0]?.id ?? null
+        : current.activeSessionId;
+
+      return {
+        ...current,
+        sessions,
+        activeSessionId,
+        lastError: null,
+      };
+    });
+
+    if (targetSession.isPlaceholder) {
+      return;
+    }
+
+    try {
+      await deleteJson<{ success: true }>(`/api/sessions/${sessionId}`);
+    } catch (error) {
+      console.error("Failed to delete session", error);
+      set((current) => ({
+        ...current,
+        sessions: snapshotSessions,
+        activeSessionId: snapshotActive,
+        lastError: extractErrorMessage(
+          error,
+          "Failed to delete session. Please try again.",
+        ),
+      }));
+    }
+  },
   hydrate: async () => {
     const { hasHydrated, isHydrating } = get();
     if (hasHydrated || isHydrating) {

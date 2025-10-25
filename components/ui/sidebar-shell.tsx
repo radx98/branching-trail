@@ -1,5 +1,10 @@
 import { cn } from "@/lib/utils";
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  HTMLAttributes,
+  ReactNode,
+  MouseEvent,
+} from "react";
 
 type SidebarShellProps = HTMLAttributes<HTMLElement> & {
   title: string;
@@ -32,23 +37,42 @@ export function SidebarShell({
   );
 }
 
-type SidebarItemProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+type SidebarItemProps = HTMLAttributes<HTMLDivElement> & {
   active?: boolean;
 };
 
 export function SidebarItem({
   active,
   className,
+  onClick,
+  onKeyDown,
   ...props
 }: SidebarItemProps) {
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       data-active={active ? "true" : "false"}
       className={cn(
         "flex h-12 items-center justify-between rounded-[var(--radius-card)] border border-transparent bg-white/60 px-4 text-left font-medium text-slate-600 transition-colors data-[active=true]:bg-white data-[active=true]:text-slate-900 hover:bg-white/80",
         className,
       )}
-      type="button"
+      onClick={onClick as unknown as (event: MouseEvent<HTMLDivElement>) => void}
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented) {
+          return;
+        }
+        if (!onClick) {
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick(
+            event as unknown as MouseEvent<HTMLDivElement>,
+          );
+        }
+      }}
       {...props}
     />
   );
