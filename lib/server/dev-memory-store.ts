@@ -110,3 +110,17 @@ export function memoryUpdateSession(
   store.set(sessionId, updated);
   return cloneRow(updated);
 }
+
+export function memoryDeleteSession(
+  userId: string,
+  sessionId: string,
+): void {
+  const store = sessionsByUser.get(userId);
+  if (!store) {
+    throw new Error("Session not found.");
+  }
+
+  if (!store.delete(sessionId)) {
+    throw new Error("Session not found.");
+  }
+}

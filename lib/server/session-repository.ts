@@ -6,6 +6,7 @@ import {
   memoryInsertSession,
   memoryListSessions,
   memoryUpdateSession,
+  memoryDeleteSession,
 } from "@/lib/server/dev-memory-store";
 
 export type SessionRow = {
@@ -202,6 +203,34 @@ export async function updateSessionTree(
 
   markSupabaseSuccess();
   return data as SessionRow;
+}
+
+export async function deleteSession(
+  supabase: SupabaseClient | null,
+  sessionId: string,
+  userId: string,
+): Promise<void> {
+  if (shouldUseMemoryStore(supabase)) {
+    memoryDeleteSession(userId, sessionId);
+    return;
+  }
+
+  const { error } = await supabase
+    .from("sessions")
+    .delete()
+    .eq("id", sessionId)
+    .eq("user_id", userId);
+
+  if (error) {
+    if (enableMemoryFallback(error)) {
+      memoryDeleteSession(userId, sessionId);
+      return;
+    }
+
+    throw new Error(`Failed to delete session: ${error.message}`);
+  }
+
+  markSupabaseSuccess();
 }
 
 export function mapRowToSessionTree(row: SessionRow): SessionTree {

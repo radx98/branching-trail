@@ -7,14 +7,14 @@ import {
   SidebarShell,
 } from "@/components/ui/sidebar-shell";
 import { EMPTY_STATE_NOTE, useSessionStore } from "@/lib/state/session-store";
-import type { BranchNode } from "@/lib/types/tree";
-import { useMemo, useCallback, useEffect } from "react";
+import { useMemo, useEffect } from "react";
 
 export default function Home() {
   const sessions = useSessionStore((state) => state.sessions);
   const activeSessionId = useSessionStore((state) => state.activeSessionId);
   const createSession = useSessionStore((state) => state.createSession);
   const selectSession = useSessionStore((state) => state.selectSession);
+  const deleteSession = useSessionStore((state) => state.deleteSession);
   const submitPrompt = useSessionStore((state) => state.submitPrompt);
   const commitSpecifyPrompt = useSessionStore(
     (state) => state.commitSpecifyPrompt,
@@ -33,29 +33,6 @@ export default function Home() {
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
-
-  const computeSessionStatus = useCallback(
-    (node: BranchNode): "idle" | "loading" | "error" => {
-      if (node.status === "error") {
-        return "error";
-      }
-      if (node.status === "loading") {
-        return "loading";
-      }
-      let childState: "idle" | "loading" | "error" = "idle";
-      for (const child of node.children) {
-        const status = computeSessionStatus(child);
-        if (status === "error") {
-          return "error";
-        }
-        if (status === "loading") {
-          childState = "loading";
-        }
-      }
-      return childState;
-    },
-    [],
-  );
 
   return (
     <div className="flex min-h-screen bg-[var(--color-background)] text-[var(--color-foreground)]">
@@ -95,29 +72,36 @@ export default function Home() {
           </div>
         ) : null}
 
-        {sessions.map((session) => {
-          const statusState = computeSessionStatus(session.root);
-          const status = session.isPlaceholder && !session.root.prompt
-            ? "Setup"
-            : statusState === "loading"
-              ? "Refreshing"
-              : statusState === "error"
-                ? "Error"
-                : "Idle";
-
-          return (
-            <SidebarItem
-              key={session.id}
-              active={session.id === activeSessionId}
-              onClick={() => selectSession(session.id)}
+        {sessions.map((session) => (
+          <SidebarItem
+            key={session.id}
+            active={session.id === activeSessionId}
+            onClick={() => selectSession(session.id)}
+          >
+            <span className="truncate">{session.title}</span>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void deleteSession(session.id);
+              }}
+              className="inline-flex h-8 items-center justify-center rounded-full text-[color:var(--color-foreground-soft)] transition-colors hover:bg-white/70 hover:text-[color:var(--color-foreground)]"
+              aria-label="Delete session"
             >
-              <span className="truncate">{session.title}</span>
-              <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
-                {status}
-              </span>
-            </SidebarItem>
-          );
-        })}
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </SidebarItem>
+        ))}
       </SidebarShell>
 
       <main className="relative flex flex-1 flex-col overflow-hidden">
