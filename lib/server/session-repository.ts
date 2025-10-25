@@ -74,6 +74,10 @@ export async function listSessionsForUser(
     return memoryListSessions(userId);
   }
 
+  if (!supabase) {
+    throw new Error("Supabase client is not available.");
+  }
+
   const { data, error } = await supabase
     .from("sessions")
     .select("id, user_id, title, tree_json, token_usage")
@@ -103,6 +107,10 @@ export async function insertSession(
 ): Promise<SessionRow> {
   if (shouldUseMemoryStore(supabase)) {
     return memoryInsertSession(userId, payload);
+  }
+
+  if (!supabase) {
+    throw new Error("Supabase client is not available.");
   }
 
   const { data, error } = await supabase
@@ -135,6 +143,10 @@ export async function fetchSession(
 ): Promise<SessionRow> {
   if (shouldUseMemoryStore(supabase)) {
     return memoryFetchSession(userId, sessionId);
+  }
+
+  if (!supabase) {
+    throw new Error("Supabase client is not available.");
   }
 
   const { data, error } = await supabase
@@ -170,6 +182,10 @@ export async function updateSessionTree(
 ): Promise<SessionRow> {
   if (shouldUseMemoryStore(supabase)) {
     return memoryUpdateSession(userId, sessionId, payload);
+  }
+
+  if (!supabase) {
+    throw new Error("Supabase client is not available.");
   }
 
   const updatePayload: {
@@ -213,6 +229,10 @@ export async function deleteSession(
   if (shouldUseMemoryStore(supabase)) {
     memoryDeleteSession(userId, sessionId);
     return;
+  }
+
+  if (!supabase) {
+    throw new Error("Supabase client is not available.");
   }
 
   const { error } = await supabase
