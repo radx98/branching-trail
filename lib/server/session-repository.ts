@@ -18,6 +18,8 @@ export type SessionRow = {
 };
 
 const isDevEnvironment = process.env.NODE_ENV !== "production";
+const PUBLIC_USER_ID =
+  process.env.BRANCHING_TRAIL_SESSION_USER_ID ?? "public-user";
 let memoryFallbackEnabled = false;
 let diagnostics: {
   backend: "supabase" | "memory";
@@ -66,12 +68,11 @@ const markSupabaseSuccess = () => {
 
 export const getSessionRepositoryDiagnostics = () => diagnostics;
 
-export async function listSessionsForUser(
+export async function listSessions(
   supabase: SupabaseClient | null,
-  userId: string,
 ): Promise<SessionRow[]> {
   if (shouldUseMemoryStore(supabase)) {
-    return memoryListSessions(userId);
+    return memoryListSessions();
   }
 
   const client = supabase;
@@ -82,12 +83,12 @@ export async function listSessionsForUser(
   const { data, error } = await client
     .from("sessions")
     .select("id, user_id, title, tree_json, token_usage")
-    .eq("user_id", userId)
+    .eq("user_id", PUBLIC_USER_ID)
     .order("created_at", { ascending: false });
 
   if (error || !data) {
     if (enableMemoryFallback(error ?? new Error("Unknown Supabase error."))) {
-      return memoryListSessions(userId);
+      return memoryListSessions();
     }
 
     throw new Error(`Failed to load sessions: ${error?.message ?? "Unknown"}`);
@@ -99,7 +100,6 @@ export async function listSessionsForUser(
 
 export async function insertSession(
   supabase: SupabaseClient | null,
-  userId: string,
   payload: {
     title: string;
     tree: BranchNode;
@@ -107,7 +107,7 @@ export async function insertSession(
   },
 ): Promise<SessionRow> {
   if (shouldUseMemoryStore(supabase)) {
-    return memoryInsertSession(userId, payload);
+    return memoryInsertSession(payload);
   }
 
   const client = supabase;
@@ -118,7 +118,7 @@ export async function insertSession(
   const { data, error } = await client
     .from("sessions")
     .insert({
-      user_id: userId,
+      user_id: PUBLIC_USER_ID,
       title: payload.title,
       tree_json: payload.tree,
       token_usage: payload.tokenUsage,
@@ -128,7 +128,7 @@ export async function insertSession(
 
   if (error || !data) {
     if (enableMemoryFallback(error ?? new Error("Unknown Supabase error."))) {
-      return memoryInsertSession(userId, payload);
+      return memoryInsertSession(payload);
     }
 
     throw new Error(`Failed to insert session: ${error?.message ?? "Unknown"}`);
@@ -141,10 +141,9 @@ export async function insertSession(
 export async function fetchSession(
   supabase: SupabaseClient | null,
   sessionId: string,
-  userId: string,
 ): Promise<SessionRow> {
   if (shouldUseMemoryStore(supabase)) {
-    return memoryFetchSession(userId, sessionId);
+    return memoryFetchSession(sessionId);
   }
 
   const client = supabase;
@@ -156,12 +155,12 @@ export async function fetchSession(
     .from("sessions")
     .select("id, user_id, title, tree_json, token_usage")
     .eq("id", sessionId)
-    .eq("user_id", userId)
+    .eq("user_id", PUBLIC_USER_ID)
     .single();
 
   if (error || !data) {
     if (enableMemoryFallback(error ?? new Error("Unknown Supabase error."))) {
-      return memoryFetchSession(userId, sessionId);
+      return memoryFetchSession(sessionId);
     }
 
     throw new Error(
@@ -176,7 +175,6 @@ export async function fetchSession(
 export async function updateSessionTree(
   supabase: SupabaseClient | null,
   sessionId: string,
-  userId: string,
   payload: {
     title?: string;
     tree: BranchNode;
@@ -184,7 +182,7 @@ export async function updateSessionTree(
   },
 ): Promise<SessionRow> {
   if (shouldUseMemoryStore(supabase)) {
-    return memoryUpdateSession(userId, sessionId, payload);
+    return memoryUpdateSession(sessionId, payload);
   }
 
   const client = supabase;
@@ -209,13 +207,13 @@ export async function updateSessionTree(
     .from("sessions")
     .update(updatePayload)
     .eq("id", sessionId)
-    .eq("user_id", userId)
+    .eq("user_id", PUBLIC_USER_ID)
     .select("id, user_id, title, tree_json, token_usage")
     .single();
 
   if (error || !data) {
     if (enableMemoryFallback(error ?? new Error("Unknown Supabase error."))) {
-      return memoryUpdateSession(userId, sessionId, payload);
+      return memoryUpdateSession(sessionId, payload);
     }
 
     throw new Error(`Failed to update session: ${error?.message ?? "Unknown"}`);
@@ -228,10 +226,9 @@ export async function updateSessionTree(
 export async function deleteSession(
   supabase: SupabaseClient | null,
   sessionId: string,
-  userId: string,
 ): Promise<void> {
   if (shouldUseMemoryStore(supabase)) {
-    memoryDeleteSession(userId, sessionId);
+    memoryDeleteSession(sessionId);
     return;
   }
 
@@ -244,11 +241,11 @@ export async function deleteSession(
     .from("sessions")
     .delete()
     .eq("id", sessionId)
-    .eq("user_id", userId);
+    .eq("user_id", PUBLIC_USER_ID);
 
   if (error) {
     if (enableMemoryFallback(error)) {
-      memoryDeleteSession(userId, sessionId);
+      memoryDeleteSession(sessionId);
       return;
     }
 

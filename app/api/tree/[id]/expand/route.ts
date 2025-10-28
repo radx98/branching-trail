@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 
-import { ApiError, requireAuthenticatedClient } from "@/lib/server/auth";
+import { ApiError } from "@/lib/server/errors";
 import {
   generateBranchOptions,
   generateSessionTitle,
@@ -22,6 +22,7 @@ import {
   findNodeWithTrail,
   walkTree,
 } from "@/lib/tree/operations";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(
   request: NextRequest,
@@ -30,9 +31,9 @@ export async function POST(
   try {
     const { id: sessionId } = await params;
     const payload = expandNodeBodySchema.parse(await request.json());
-    const { supabase, user } = await requireAuthenticatedClient();
+    const supabase = createSupabaseServerClient();
 
-    const row = await fetchSession(supabase, sessionId, user.id);
+    const row = await fetchSession(supabase, sessionId);
     const tree = cloneTree(row.tree_json);
 
     let updatedTitle: string | undefined;
@@ -171,7 +172,7 @@ export async function POST(
 
     const newUsage = (row.token_usage ?? 0) + tokensConsumed;
 
-    const updatedRow = await updateSessionTree(supabase, sessionId, user.id, {
+    const updatedRow = await updateSessionTree(supabase, sessionId, {
       title: updatedTitle,
       tree,
       tokenUsage: newUsage,

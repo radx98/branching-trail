@@ -7,6 +7,8 @@ type MemorySessionRow = SessionRow & {
   created_at: number;
 };
 
+const PUBLIC_USER_ID =
+  process.env.BRANCHING_TRAIL_SESSION_USER_ID ?? "public-user";
 const sessionsByUser = new Map<string, Map<string, MemorySessionRow>>();
 
 const cloneTree = (tree: BranchNode): BranchNode =>
@@ -20,17 +22,15 @@ const cloneRow = (row: MemorySessionRow): SessionRow => ({
   token_usage: row.token_usage,
 });
 
-const ensureUserStore = (
-  userId: string,
-): Map<string, MemorySessionRow> => {
-  if (!sessionsByUser.has(userId)) {
-    sessionsByUser.set(userId, new Map());
+const ensureUserStore = (): Map<string, MemorySessionRow> => {
+  if (!sessionsByUser.has(PUBLIC_USER_ID)) {
+    sessionsByUser.set(PUBLIC_USER_ID, new Map());
   }
-  return sessionsByUser.get(userId)!;
+  return sessionsByUser.get(PUBLIC_USER_ID)!;
 };
 
-export function memoryListSessions(userId: string): SessionRow[] {
-  const store = sessionsByUser.get(userId);
+export function memoryListSessions(): SessionRow[] {
+  const store = sessionsByUser.get(PUBLIC_USER_ID);
   if (!store) {
     return [];
   }
@@ -40,20 +40,17 @@ export function memoryListSessions(userId: string): SessionRow[] {
     .map(cloneRow);
 }
 
-export function memoryInsertSession(
-  userId: string,
-  payload: {
-    title: string;
-    tree: BranchNode;
-    tokenUsage: number;
-  },
-): SessionRow {
-  const store = ensureUserStore(userId);
+export function memoryInsertSession(payload: {
+  title: string;
+  tree: BranchNode;
+  tokenUsage: number;
+}): SessionRow {
+  const store = ensureUserStore();
   const id = `local-${randomUUID()}`;
 
   const row: MemorySessionRow = {
     id,
-    user_id: userId,
+    user_id: PUBLIC_USER_ID,
     title: payload.title,
     tree_json: cloneTree(payload.tree),
     token_usage: payload.tokenUsage,
@@ -64,11 +61,8 @@ export function memoryInsertSession(
   return cloneRow(row);
 }
 
-export function memoryFetchSession(
-  userId: string,
-  sessionId: string,
-): SessionRow {
-  const store = sessionsByUser.get(userId);
+export function memoryFetchSession(sessionId: string): SessionRow {
+  const store = sessionsByUser.get(PUBLIC_USER_ID);
   if (!store) {
     throw new Error("Session not found.");
   }
@@ -82,7 +76,6 @@ export function memoryFetchSession(
 }
 
 export function memoryUpdateSession(
-  userId: string,
   sessionId: string,
   payload: {
     title?: string;
@@ -90,7 +83,7 @@ export function memoryUpdateSession(
     tokenUsage: number;
   },
 ): SessionRow {
-  const store = sessionsByUser.get(userId);
+  const store = sessionsByUser.get(PUBLIC_USER_ID);
   if (!store) {
     throw new Error("Session not found.");
   }
@@ -111,11 +104,8 @@ export function memoryUpdateSession(
   return cloneRow(updated);
 }
 
-export function memoryDeleteSession(
-  userId: string,
-  sessionId: string,
-): void {
-  const store = sessionsByUser.get(userId);
+export function memoryDeleteSession(sessionId: string): void {
+  const store = sessionsByUser.get(PUBLIC_USER_ID);
   if (!store) {
     throw new Error("Session not found.");
   }

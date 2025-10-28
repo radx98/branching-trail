@@ -20,11 +20,10 @@ The app expects:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `OPENAI_API_KEY`
-- `DEV_SUPABASE_USER_ID` (optional – enables local single-user bypass when Supabase Auth UI is not yet wired up)
-- `DEV_SUPABASE_USER_EMAIL` (optional companion to the ID; defaults to `dev@example.com`)
+- `BRANCHING_TRAIL_SESSION_USER_ID` (optional – overrides the shared session namespace when Supabase is configured)
 
 When the service role credentials are not provided in development, the API
-automatically falls back to an in-memory session store (scoped per user ID).
+automatically falls back to an in-memory session store (shared for all users).
 This keeps the Phase 3 flow usable without a full Supabase instance, though
 data will reset whenever the server restarts.
 
