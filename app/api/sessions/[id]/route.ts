@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ApiError, requireAuthenticatedClient } from "@/lib/server/auth";
+import { ApiError } from "@/lib/server/errors";
 import {
   deleteSession,
   getSessionRepositoryDiagnostics,
 } from "@/lib/server/session-repository";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function DELETE(
   _request: NextRequest,
@@ -12,9 +13,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { supabase, user } = await requireAuthenticatedClient();
+    const supabase = createSupabaseServerClient();
 
-    await deleteSession(supabase, id, user.id);
+    await deleteSession(supabase, id);
 
     return NextResponse.json(
       { success: true, meta: getSessionRepositoryDiagnostics() },

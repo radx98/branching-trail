@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
-import { ApiError, requireAuthenticatedClient } from "@/lib/server/auth";
+import { ApiError } from "@/lib/server/errors";
 import {
   generateBranchOptions,
   generateSessionTitle,
@@ -10,17 +10,18 @@ import {
 import {
   getSessionRepositoryDiagnostics,
   insertSession,
-  listSessionsForUser,
+  listSessions,
   mapRowToSessionTree,
 } from "@/lib/server/session-repository";
 import { createSessionBodySchema } from "@/lib/server/schemas";
 import type { BranchNode } from "@/lib/types/tree";
 import { createOptionNode, createSpecifyNode } from "@/lib/tree/builders";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET() {
   try {
-    const { supabase, user } = await requireAuthenticatedClient();
-    const rows = await listSessionsForUser(supabase, user.id);
+    const supabase = createSupabaseServerClient();
+    const rows = await listSessions(supabase);
     return NextResponse.json(
       {
         sessions: rows.map((row) => mapRowToSessionTree(row)),
@@ -51,7 +52,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const payload = createSessionBodySchema.parse(await request.json());
-    const { supabase, user } = await requireAuthenticatedClient();
+    const supabase = createSupabaseServerClient();
 
     const rootId = `session-root-${randomUUID()}`;
 
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
 
     const totalTokens = titleTokens + optionTokens;
 
-    const row = await insertSession(supabase, user.id, {
+    const row = await insertSession(supabase, {
       title,
       tree: rootNode,
       tokenUsage: totalTokens,

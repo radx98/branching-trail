@@ -98,7 +98,6 @@ async function requestJson<T>(
   const response = await fetch(url, {
     ...init,
     headers,
-    credentials: "include",
   });
 
   let data: unknown = null;
