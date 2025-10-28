@@ -3,7 +3,8 @@
 import { create } from "zustand";
 
 import type { BranchNode, SessionTree } from "@/lib/types/tree";
-import { createSpecifyNode } from "@/lib/tree/builders";
+import { createOptionNode, createSpecifyNode } from "@/lib/tree/builders";
+import { findNodeWithTrail, walkTree, ensureSpecifyChild } from "@/lib/tree/operations";
 
 type SessionState = {
   sessions: SessionTree[];
@@ -13,7 +14,7 @@ type SessionState = {
   lastError: string | null;
   createSession: () => void;
   selectSession: (sessionId: string) => void;
-  deleteSession: (sessionId: string) => Promise<void>;
+  deleteSession: (sessionId: string) => void;
   submitPrompt: (
     sessionId: string,
     nodeId: string,
@@ -31,6 +32,8 @@ type SessionState = {
 
 const EMPTY_STATE_NOTE =
   "Create a fresh session to start exploring branching ideas.";
+
+const STORAGE_KEY = "branching-trail:sessions:v1";
 
 const cloneSessionTree = (session: SessionTree): SessionTree =>
   JSON.parse(JSON.stringify(session)) as SessionTree;
@@ -52,30 +55,58 @@ const updateNode = (
   };
 };
 
-const findSessionIndex = (sessions: SessionTree[], sessionId: string) =>
-  sessions.findIndex((session) => session.id === sessionId);
-
-const createPlaceholderSession = (): SessionTree => {
-  const sessionId = `draft-${crypto.randomUUID()}`;
-  const rootId = `${sessionId}::root`;
-
-  return {
-    id: sessionId,
-    title: "New session",
-    isPlaceholder: true,
-    tokenUsage: null,
-    root: {
-      id: rootId,
-      title: "New session",
-      prompt: "",
-      variant: "prompt",
-      status: "idle",
-      children: [],
-    },
-  };
+const generateId = (prefix: string) => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
-function extractErrorMessage(error: unknown, fallback: string): string {
+const persistSessions = (sessions: SessionTree[]) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+  } catch (error) {
+    console.error("Failed to persist sessions", error);
+  }
+};
+
+const loadSessionsFromStorage = (): SessionTree[] => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw) as SessionTree[];
+    return Array.isArray(parsed)
+      ? parsed.map((session) => ({
+          ...session,
+          isPlaceholder: false,
+        }))
+      : [];
+  } catch (error) {
+    console.error("Failed to load stored sessions", error);
+    return [];
+  }
+};
+
+const buildOptionChildren = (parentId: string, options: string[]) => {
+  const children = options.map((option, index) =>
+    createOptionNode({ parentId, index, title: option }),
+  );
+  children.push(createSpecifyNode(parentId));
+  return children;
+};
+
+const extractErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof Error && error.message) {
     return error.message;
   }
@@ -83,30 +114,26 @@ function extractErrorMessage(error: unknown, fallback: string): string {
     return error;
   }
   return fallback;
-}
+};
 
 async function requestJson<T>(
   url: string,
-  init: RequestInit = {},
+  body: unknown,
 ): Promise<T> {
-  const headers = new Headers(init.headers);
-
-  if (init.body !== undefined && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-
   const response = await fetch(url, {
-    ...init,
-    headers,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
   });
 
   let data: unknown = null;
-  const contentType = response.headers.get("content-type");
 
-  if (contentType?.includes("application/json")) {
+  if (response.headers.get("content-type")?.includes("application/json")) {
     try {
       data = await response.json();
-    } catch (error) {
+    } catch {
       data = null;
     }
   }
@@ -122,36 +149,31 @@ async function requestJson<T>(
   return (data ?? {}) as T;
 }
 
-type ApiResponse<T> = T & {
-  meta?: {
-    backend?: "supabase" | "memory";
-    lastError?: string | null;
-  };
+type OptionsResponse = {
+  options: string[];
+  tokens: number;
 };
 
-const logStorageWarning = (meta?: ApiResponse<unknown>["meta"]) => {
-  if (!meta) {
-    return;
-  }
-  if (meta.backend === "memory") {
-    console.warn(
-      "[sessions] Using in-memory session store. Supabase writes are disabled",
-      meta.lastError ? `(${meta.lastError})` : "",
-    );
-  }
+type TitleResponse = {
+  title: string;
+  tokens: number;
 };
 
-const getJson = <T,>(url: string) =>
-  requestJson<ApiResponse<T>>(url, { method: "GET" });
+const fetchBranchOptions = (payload: {
+  prompt: string;
+  nodeTitle?: string;
+  breadcrumb?: string[];
+}): Promise<OptionsResponse> =>
+  requestJson<OptionsResponse>("/api/generate/options", payload);
 
-const postJson = <T,>(url: string, body: unknown) =>
-  requestJson<ApiResponse<T>>(url, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+const fetchSessionTitle = (prompt: string): Promise<TitleResponse> =>
+  requestJson<TitleResponse>("/api/generate/title", { prompt });
 
-const deleteJson = <T,>(url: string) =>
-  requestJson<ApiResponse<T>>(url, { method: "DELETE" });
+const ensureSpecifyBranches = (root: BranchNode): BranchNode => {
+  const clone = JSON.parse(JSON.stringify(root)) as BranchNode;
+  walkTree(clone, (node) => ensureSpecifyChild(node, createSpecifyNode));
+  return clone;
+};
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   sessions: [],
@@ -160,66 +182,58 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   hasHydrated: false,
   lastError: null,
   createSession: () => {
-    const session = createPlaceholderSession();
-    set((state) => ({
-      ...state,
-      sessions: [session, ...state.sessions],
-      activeSessionId: session.id,
-      lastError: null,
-    }));
+    const sessionId = generateId("draft");
+    const rootId = `${sessionId}::root`;
+
+    const session: SessionTree = {
+      id: sessionId,
+      title: "New session",
+      isPlaceholder: true,
+      tokenUsage: null,
+      root: {
+        id: rootId,
+        title: "New session",
+        prompt: "",
+        variant: "prompt",
+        status: "idle",
+        children: [],
+      },
+    };
+
+    set((state) => {
+      const sessions = [session, ...state.sessions];
+      persistSessions(sessions.filter((item) => !item.isPlaceholder));
+      return {
+        ...state,
+        sessions,
+        activeSessionId: session.id,
+        lastError: null,
+      };
+    });
   },
   selectSession: (sessionId: string) =>
     set((state) => ({
       ...state,
       activeSessionId: sessionId,
     })),
-  deleteSession: async (sessionId) => {
-    const state = get();
-    const sessionIndex = findSessionIndex(state.sessions, sessionId);
-    if (sessionIndex === -1) {
-      return;
-    }
-
-    const snapshotSessions = state.sessions.map((session) =>
-      cloneSessionTree(session),
-    );
-    const snapshotActive = state.activeSessionId;
-    const targetSession = state.sessions[sessionIndex];
-
-    set((current) => {
-      const sessions = current.sessions.filter((session) =>
+  deleteSession: (sessionId) => {
+    set((state) => {
+      const sessions = state.sessions.filter((session) =>
         session.id !== sessionId,
       );
-      const activeSessionId = current.activeSessionId === sessionId
-        ? sessions[0]?.id ?? null
-        : current.activeSessionId;
+      persistSessions(sessions.filter((item) => !item.isPlaceholder));
+      const activeSessionId =
+        state.activeSessionId === sessionId
+          ? sessions[0]?.id ?? null
+          : state.activeSessionId;
 
       return {
-        ...current,
+        ...state,
         sessions,
         activeSessionId,
         lastError: null,
       };
     });
-
-    if (targetSession.isPlaceholder) {
-      return;
-    }
-
-    try {
-      await deleteJson<{ success: true }>(`/api/sessions/${sessionId}`);
-    } catch (error) {
-      console.error("Failed to delete session", error);
-      set((current) => ({
-        ...current,
-        sessions: snapshotSessions,
-        activeSessionId: snapshotActive,
-        lastError: extractErrorMessage(
-          error,
-          "Failed to delete session. Please try again.",
-        ),
-      }));
-    }
   },
   hydrate: async () => {
     const { hasHydrated, isHydrating } = get();
@@ -234,24 +248,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }));
 
     try {
-      const data = await getJson<{ sessions: SessionTree[] }>("/api/sessions");
-      logStorageWarning(data.meta);
-      const sessions = (data.sessions ?? []).map((session) => ({
-        ...session,
-        isPlaceholder: false,
-      }));
-
+      const sessions = loadSessionsFromStorage();
       set((state) => {
-        const currentActive = state.activeSessionId;
-        const activeSession =
-          currentActive && sessions.some((item) => item.id === currentActive)
-            ? currentActive
-            : sessions[0]?.id ?? currentActive;
+        const active = state.activeSessionId && sessions.some((item) =>
+          item.id === state.activeSessionId
+        )
+          ? state.activeSessionId
+          : sessions[0]?.id ?? state.activeSessionId;
 
         return {
           ...state,
           sessions,
-          activeSessionId: activeSession,
+          activeSessionId: active,
           isHydrating: false,
           hasHydrated: true,
         };
@@ -272,7 +280,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     })),
   submitPrompt: async (sessionId, nodeId, prompt) => {
     const state = get();
-    const sessionIndex = findSessionIndex(state.sessions, sessionId);
+    const sessionIndex = state.sessions.findIndex((session) =>
+      session.id === sessionId
+    );
     if (sessionIndex === -1) {
       return;
     }
@@ -291,6 +301,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           children: [],
         })),
       };
+
       return {
         ...current,
         sessions,
@@ -300,58 +311,102 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     try {
       if (session.isPlaceholder) {
-        const data = await postJson<{ session: SessionTree }>(
-          "/api/sessions",
-          { prompt },
-        );
-        logStorageWarning(data.meta);
-        const createdSession: SessionTree = {
-          ...data.session,
+        const [titleResult, optionsResult] = await Promise.all([
+          fetchSessionTitle(prompt),
+          fetchBranchOptions({ prompt }),
+        ]);
+
+        const newSessionId = generateId("session");
+        const rootId = `${newSessionId}::root`;
+
+        const nextSession: SessionTree = {
+          id: newSessionId,
+          title: titleResult.title,
           isPlaceholder: false,
+          tokenUsage: titleResult.tokens + optionsResult.tokens,
+          root: {
+            id: rootId,
+            title: titleResult.title,
+            prompt,
+            variant: "prompt",
+            status: "idle",
+            children: buildOptionChildren(rootId, optionsResult.options),
+          },
         };
 
         set((current) => {
           const sessions = current.sessions.slice();
-          sessions[sessionIndex] = createdSession;
+          sessions[sessionIndex] = nextSession;
+          persistSessions(sessions.filter((item) => !item.isPlaceholder));
           return {
             ...current,
             sessions,
-            activeSessionId: createdSession.id,
+            activeSessionId: nextSession.id,
           };
         });
-      } else {
-        const data = await postJson<{ session: SessionTree }>(
-          `/api/tree/${session.id}/expand`,
-          { mode: "submit", nodeId, prompt },
-        );
-        logStorageWarning(data.meta);
-        const updatedSession: SessionTree = {
-          ...data.session,
-          isPlaceholder: false,
-        };
 
-        set((current) => {
-          const sessions = current.sessions.slice();
-          sessions[sessionIndex] = updatedSession;
-          return {
-            ...current,
-            sessions,
-          };
-        });
+        return;
       }
+
+      const match = findNodeWithTrail(snapshot.root, nodeId);
+      if (!match) {
+        throw new Error("Target node not found.");
+      }
+
+      const breadcrumbTitles = match.breadcrumb
+        .filter((node) => node.variant !== "specify")
+        .map((node) => node.title)
+        .filter((title): title is string => Boolean(title));
+
+      const optionsResult = await fetchBranchOptions({
+        prompt,
+        nodeTitle: match.node.title,
+        breadcrumb: breadcrumbTitles,
+      });
+
+      let updatedTitle: string | undefined;
+      let accumulatedTokens = optionsResult.tokens;
+
+      if (match.parent === null) {
+        const titleResult = await fetchSessionTitle(prompt);
+        updatedTitle = titleResult.title;
+        accumulatedTokens += titleResult.tokens;
+      }
+
+      set((current) => {
+        const sessions = current.sessions.slice();
+        const target = sessions[sessionIndex];
+
+        const updatedSession: SessionTree = {
+          ...target,
+          title: updatedTitle ?? target.title,
+          tokenUsage:
+            (target.tokenUsage ?? 0) + accumulatedTokens,
+          root: ensureSpecifyBranches(
+            updateNode(target.root, nodeId, (node) => ({
+              ...node,
+              prompt,
+              title: match.parent === null && updatedTitle
+                ? updatedTitle
+                : node.title,
+              status: "idle",
+              children: buildOptionChildren(node.id, optionsResult.options),
+            })),
+          ),
+        };
+
+        sessions[sessionIndex] = updatedSession;
+        persistSessions(sessions.filter((item) => !item.isPlaceholder));
+        return {
+          ...current,
+          sessions,
+        };
+      });
     } catch (error) {
       console.error("Failed to submit prompt", error);
       set((current) => {
         const sessions = current.sessions.slice();
-        sessions[sessionIndex] = {
-          ...snapshot,
-          root: updateNode(snapshot.root, nodeId, (node) => ({
-            ...node,
-            prompt,
-            status: "error",
-          })),
-        };
-
+        sessions[sessionIndex] = snapshot;
         return {
           ...current,
           sessions,
@@ -365,7 +420,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   commitSpecifyPrompt: async (sessionId, parentNodeId, prompt) => {
     const state = get();
-    const sessionIndex = findSessionIndex(state.sessions, sessionId);
+    const sessionIndex = state.sessions.findIndex((session) =>
+      session.id === sessionId
+    );
     if (sessionIndex === -1) {
       return;
     }
@@ -376,7 +433,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
 
     const snapshot = cloneSessionTree(session);
-    const tempNodeId = `${parentNodeId}::temp-${crypto.randomUUID()}`;
+
+    const tempNodeId = `${parentNodeId}::temp-${generateId("node")}`;
 
     set((current) => {
       const sessions = current.sessions.slice();
@@ -410,19 +468,56 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
 
     try {
-      const data = await postJson<{ session: SessionTree }>(
-        `/api/tree/${session.id}/expand`,
-        { mode: "specify", parentNodeId, prompt },
-      );
-      logStorageWarning(data.meta);
-      const updatedSession: SessionTree = {
-        ...data.session,
-        isPlaceholder: false,
+      const parentMatch = findNodeWithTrail(snapshot.root, parentNodeId);
+      if (!parentMatch) {
+        throw new Error("Parent node not found.");
+      }
+
+      const breadcrumbTitles = [
+        ...parentMatch.breadcrumb
+          .filter((node) => node.variant !== "specify")
+          .map((node) => node.title)
+          .filter(Boolean),
+        parentMatch.node.variant !== "specify" ? parentMatch.node.title : "",
+      ].filter(Boolean);
+
+      const optionsResult = await fetchBranchOptions({
+        prompt,
+        breadcrumb: breadcrumbTitles,
+      });
+
+      const newNodeId = `${parentNodeId}::spec-${generateId("node")}`;
+      const newNode: BranchNode = {
+        id: newNodeId,
+        title: "",
+        prompt,
+        variant: "prompt",
+        status: "idle",
+        children: buildOptionChildren(newNodeId, optionsResult.options),
       };
 
       set((current) => {
         const sessions = current.sessions.slice();
+        const target = sessions[sessionIndex];
+
+        const updatedSession: SessionTree = {
+          ...target,
+          tokenUsage:
+            (target.tokenUsage ?? 0) + optionsResult.tokens,
+          root: ensureSpecifyBranches(
+            updateNode(target.root, parentNodeId, (node) => ({
+              ...node,
+              children: [
+                ...node.children.filter((child) => child.variant !== "specify"),
+                newNode,
+                createSpecifyNode(node.id),
+              ],
+            })),
+          ),
+        };
+
         sessions[sessionIndex] = updatedSession;
+        persistSessions(sessions.filter((item) => !item.isPlaceholder));
         return {
           ...current,
           sessions,
@@ -432,14 +527,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       console.error("Failed to create specify prompt", error);
       set((current) => {
         const sessions = current.sessions.slice();
-        sessions[sessionIndex] = {
-          ...snapshot,
-          root: updateNode(snapshot.root, parentNodeId, (node) => ({
-            ...node,
-            status: "error",
-          })),
-        };
-
+        sessions[sessionIndex] = snapshot;
         return {
           ...current,
           sessions,
@@ -453,7 +541,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   expandOption: async (sessionId, nodeId) => {
     const state = get();
-    const sessionIndex = findSessionIndex(state.sessions, sessionId);
+    const sessionIndex = state.sessions.findIndex((session) =>
+      session.id === sessionId
+    );
     if (sessionIndex === -1) {
       return;
     }
@@ -483,19 +573,58 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
 
     try {
-      const data = await postJson<{ session: SessionTree }>(
-        `/api/tree/${session.id}/expand`,
-        { mode: "option", nodeId },
-      );
-      logStorageWarning(data.meta);
-      const updatedSession: SessionTree = {
-        ...data.session,
-        isPlaceholder: false,
-      };
+      const match = findNodeWithTrail(snapshot.root, nodeId);
+      if (!match) {
+        throw new Error("Target node not found.");
+      }
+      if (match.node.variant !== "option") {
+        throw new Error("Only option nodes can be expanded.");
+      }
+
+      const optionPrompt = match.node.prompt.trim()
+        || match.node.title.trim();
+      if (!optionPrompt) {
+        throw new Error("Option is missing prompt context.");
+      }
+
+      const breadcrumbTitles = match.breadcrumb
+        .filter((node) => node.variant !== "specify")
+        .map((node) =>
+          node.variant === "prompt" && node.prompt
+            ? node.prompt
+            : node.title,
+        )
+        .filter((title): title is string => Boolean(title));
+
+      if (match.node.title) {
+        breadcrumbTitles.push(match.node.title);
+      }
+
+      const optionsResult = await fetchBranchOptions({
+        prompt: optionPrompt,
+        nodeTitle: match.node.title,
+        breadcrumb: breadcrumbTitles,
+      });
 
       set((current) => {
         const sessions = current.sessions.slice();
+        const target = sessions[sessionIndex];
+
+        const updatedSession: SessionTree = {
+          ...target,
+          tokenUsage:
+            (target.tokenUsage ?? 0) + optionsResult.tokens,
+          root: ensureSpecifyBranches(
+            updateNode(target.root, nodeId, (node) => ({
+              ...node,
+              status: "idle",
+              children: buildOptionChildren(node.id, optionsResult.options),
+            })),
+          ),
+        };
+
         sessions[sessionIndex] = updatedSession;
+        persistSessions(sessions.filter((item) => !item.isPlaceholder));
         return {
           ...current,
           sessions,
@@ -505,14 +634,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       console.error("Failed to expand option", error);
       set((current) => {
         const sessions = current.sessions.slice();
-        sessions[sessionIndex] = {
-          ...snapshot,
-          root: updateNode(snapshot.root, nodeId, (node) => ({
-            ...node,
-            status: "error",
-          })),
-        };
-
+        sessions[sessionIndex] = snapshot;
         return {
           ...current,
           sessions,
@@ -524,6 +646,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       });
     }
   },
-}));
+})); 
 
 export { EMPTY_STATE_NOTE };
